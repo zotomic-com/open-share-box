@@ -1,0 +1,844 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User workspace profile metadata visible to the account owner and administrators.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID or managed user ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User display name.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Optional user avatar URL.",
+          "maxLength": 1000
+        },
+        "role": {
+          "type": "string",
+          "enum": ["user", "admin"],
+          "description": "User authorization role."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "suspended", "pending"],
+          "description": "Account operational status."
+        },
+        "bio": {
+          "type": "string",
+          "description": "Short user bio.",
+          "maxLength": 500
+        },
+        "organization": {
+          "type": "string",
+          "description": "User company or team name.",
+          "maxLength": 120
+        },
+        "location": {
+          "type": "string",
+          "description": "User city or country.",
+          "maxLength": 120
+        },
+        "videoCount": {
+          "type": "integer",
+          "description": "Cached count of user library videos."
+        },
+        "badgeIds": {
+          "type": "array",
+          "description": "Admin-assigned user badge document IDs (max 10)."
+        },
+        "activePlanId": {
+          "type": "string",
+          "description": "ID of user's active or assigned pricing plan.",
+          "maxLength": 128
+        },
+        "planStatus": {
+          "type": "string",
+          "enum": ["none", "active", "due", "expired"],
+          "description": "Operational billing state of the user's plan."
+        },
+        "planExpiresAtMs": {
+          "type": "integer",
+          "description": "Epoch milliseconds when the current plan period expires (0 for non-expiring free tier)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": ["uid", "displayName", "role", "status", "createdAt", "updatedAt"]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Isolated PII and administrative notes restricted strictly to the owner and admins.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Matching user UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "description": "User email address.",
+          "maxLength": 254
+        },
+        "phone": {
+          "type": "string",
+          "description": "User phone number.",
+          "maxLength": 40
+        },
+        "address": {
+          "type": "string",
+          "description": "User mailing address.",
+          "maxLength": 300
+        },
+        "adminNotes": {
+          "type": "string",
+          "description": "Internal administrator notes.",
+          "maxLength": 2000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": ["uid", "createdAt", "updatedAt"]
+    },
+    "AdminGrant": {
+      "title": "AdminGrant",
+      "description": "Trusted administrator grant document.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Granted admin UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "grantedBy": {
+          "type": "string",
+          "description": "UID of the granting administrator.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        }
+      },
+      "required": ["uid", "grantedBy", "createdAt"]
+    },
+    "SitePage": {
+      "title": "SitePage",
+      "description": "Admin-managed legal or informational CMS page supporting text, image, and video blocks.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Page document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "slug": {
+          "type": "string",
+          "description": "URL-friendly page slug.",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^[a-z0-9\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "description": "Page title.",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "subtitle": {
+          "type": "string",
+          "description": "Optional page subtitle.",
+          "maxLength": 300
+        },
+        "pageType": {
+          "type": "string",
+          "enum": ["legal", "guide", "custom"],
+          "description": "Page category type."
+        },
+        "isPublished": {
+          "type": "boolean",
+          "description": "Whether the page is visible to non-admin users."
+        },
+        "blocks": {
+          "type": "array",
+          "description": "Ordered array of text, heading, image, and video content blocks (max 40)."
+        },
+        "updatedBy": {
+          "type": "string",
+          "description": "UID of last editor.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": ["id", "slug", "title", "pageType", "isPublished", "blocks", "updatedBy", "createdAt", "updatedAt"]
+    },
+    "VideoCollection": {
+      "title": "VideoCollection",
+      "description": "A user-created folder or collection to organize analyzed videos.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Collection document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the collection owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable collection name.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional short description of the collection.",
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": ["id", "ownerId", "name", "createdAt", "updatedAt"]
+    },
+    "AnalyzedVideo": {
+      "title": "AnalyzedVideo",
+      "description": "A Universal Share Inbox item (video, screenshot, or web/product link) with timestamped segments, transcript/OCR, extracted links, save reason, and searchable tags.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Item document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "itemType": {
+          "type": "string",
+          "enum": ["video", "screenshot", "link", "document", "ai-chat"],
+          "description": "Universal Share Inbox item type."
+        },
+        "url": {
+          "type": "string",
+          "description": "Canonical shared URL or local device media reference link.",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "platform": {
+          "type": "string",
+          "enum": ["youtube", "tiktok", "instagram", "facebook", "vimeo", "x", "web", "screenshot", "upload", "document", "pdf", "chatgpt", "gemini", "claude", "llm", "other"],
+          "description": "Source platform or capture medium."
+        },
+        "title": {
+          "type": "string",
+          "description": "Item title.",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "creator": {
+          "type": "string",
+          "description": "Channel, site, or creator handle.",
+          "maxLength": 150
+        },
+        "thumbnailUrl": {
+          "type": "string",
+          "description": "Optional external thumbnail URL.",
+          "maxLength": 2048
+        },
+        "durationLabel": {
+          "type": "string",
+          "description": "Formatted duration or media size label.",
+          "maxLength": 32
+        },
+        "category": {
+          "type": "string",
+          "description": "Primary topic category.",
+          "maxLength": 80
+        },
+        "collectionId": {
+          "type": "string",
+          "description": "Optional collection ID this item belongs to.",
+          "maxLength": 128
+        },
+        "isFavorite": {
+          "type": "boolean",
+          "description": "Whether the item is pinned or favorited."
+        },
+        "saveReason": {
+          "type": "string",
+          "description": "Quick 'Why I saved this' intent tag.",
+          "maxLength": 80
+        },
+        "localMediaId": {
+          "type": "string",
+          "description": "Reference ID for media stored locally on the user's device via IndexedDB.",
+          "maxLength": 128
+        },
+        "summary": {
+          "type": "string",
+          "description": "Concise AI summary of the shared item.",
+          "minLength": 1,
+          "maxLength": 5000
+        },
+        "tldrBullets": {
+          "type": "array",
+          "description": "Key takeaway bullet strings (max 10)."
+        },
+        "tags": {
+          "type": "array",
+          "description": "Searchable topic tags (max 15)."
+        },
+        "segments": {
+          "type": "array",
+          "description": "Timestamped chapter segments or visual sections (max 60)."
+        },
+        "transcript": {
+          "type": "array",
+          "description": "Timestamped transcript or extracted OCR text entries (max 200)."
+        },
+        "links": {
+          "type": "array",
+          "description": "Extracted outbound/product/service links retrieved from the item (max 30)."
+        },
+        "notes": {
+          "type": "string",
+          "description": "User personal notes or reason for sharing.",
+          "maxLength": 10000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "id",
+        "ownerId",
+        "url",
+        "platform",
+        "title",
+        "summary",
+        "tldrBullets",
+        "tags",
+        "segments",
+        "transcript",
+        "isFavorite",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "SiteSettings": {
+      "title": "SiteSettings",
+      "description": "Global site branding, SEO metadata, Google Search Console verification, and AI brain defaults managed by admins.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Settings document ID (fixed as 'site').",
+          "pattern": "^site$"
+        },
+        "siteName": {
+          "type": "string",
+          "description": "Display name of the site.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "tagline": {
+          "type": "string",
+          "description": "Short site tagline.",
+          "maxLength": 160
+        },
+        "logoUrl": {
+          "type": "string",
+          "description": "Optional HTTP(S) URL for brand logo image.",
+          "maxLength": 1000
+        },
+        "faviconUrl": {
+          "type": "string",
+          "description": "Optional HTTP(S) URL for site favicon.",
+          "maxLength": 1000
+        },
+        "metaTitle": {
+          "type": "string",
+          "description": "HTML meta title.",
+          "maxLength": 120
+        },
+        "metaDescription": {
+          "type": "string",
+          "description": "HTML meta description for search engines.",
+          "maxLength": 320
+        },
+        "ogImageUrl": {
+          "type": "string",
+          "description": "OpenGraph social share preview image URL.",
+          "maxLength": 1000
+        },
+        "canonicalUrl": {
+          "type": "string",
+          "description": "Primary custom domain canonical URL.",
+          "maxLength": 500
+        },
+        "googleSiteVerification": {
+          "type": "string",
+          "description": "Google Search Console meta verification token.",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]*$"
+        },
+        "googleHtmlFileName": {
+          "type": "string",
+          "description": "Optional Google Search Console HTML verification filename.",
+          "maxLength": 80,
+          "pattern": "^(google[a-zA-Z0-9]+\\.html)?$"
+        },
+        "googleHtmlFileContent": {
+          "type": "string",
+          "description": "Verification file contents served at the HTML verification route.",
+          "maxLength": 200
+        },
+        "aiDefaultDepth": {
+          "type": "string",
+          "enum": ["fast", "balanced"],
+          "description": "Default Gemini reasoning depth for video analysis."
+        },
+        "aiDefaultLanguage": {
+          "type": "string",
+          "description": "Default output language for summaries and transcripts.",
+          "maxLength": 60
+        },
+        "aiCustomInstruction": {
+          "type": "string",
+          "description": "Default focus instruction applied to video analyses.",
+          "maxLength": 1000
+        },
+        "socialLoginEnabled": {
+          "type": "boolean",
+          "description": "Legacy aggregate toggle indicating whether social login is enabled."
+        },
+        "googleLoginEnabled": {
+          "type": "boolean",
+          "description": "Whether Google social signup/login is enabled for users."
+        },
+        "facebookLoginEnabled": {
+          "type": "boolean",
+          "description": "Whether Facebook social signup/login is enabled for users."
+        },
+        "facebookAppId": {
+          "type": "string",
+          "description": "Optional Facebook App ID reference configured by the admin.",
+          "maxLength": 64
+        },
+        "pricingEnabled": {
+          "type": "boolean",
+          "description": "Whether the Pricing Plans section is active and visible."
+        },
+        "headerLinks": {
+          "type": "array",
+          "description": "Admin-managed header navigation links (max 20)."
+        },
+        "footerLinks": {
+          "type": "array",
+          "description": "Admin-managed footer navigation links (max 25)."
+        },
+        "footerText": {
+          "type": "string",
+          "description": "Custom footer copyright or tagline text.",
+          "maxLength": 300
+        },
+        "checkoutEnabled": {
+          "type": "boolean",
+          "description": "Global toggle to show or hide the Checkout page."
+        },
+        "checkoutTitle": {
+          "type": "string",
+          "description": "Heading shown on the Checkout page.",
+          "maxLength": 120
+        },
+        "checkoutSubtitle": {
+          "type": "string",
+          "description": "Subtitle shown on the Checkout page.",
+          "maxLength": 300
+        },
+        "checkoutCurrency": {
+          "type": "string",
+          "description": "Currency symbol or ISO code for checkout and invoices.",
+          "maxLength": 12
+        },
+        "checkoutTaxPercent": {
+          "type": "number",
+          "description": "Tax percentage applied at checkout (0-100)."
+        },
+        "checkoutNotice": {
+          "type": "string",
+          "description": "Optional notice or payment verification instructions on checkout.",
+          "maxLength": 1000
+        },
+        "checkoutCustomFields": {
+          "type": "array",
+          "description": "Admin-configurable custom checkout fields (max 15)."
+        },
+        "updatedBy": {
+          "type": "string",
+          "description": "UID of last admin editor.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": ["id", "siteName", "aiDefaultDepth", "updatedBy", "createdAt", "updatedAt"]
+    },
+    "PricingPlan": {
+      "title": "PricingPlan",
+      "description": "Admin-managed public pricing tier displayed on the Pricing page.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "tagline": { "type": "string", "maxLength": 240 },
+        "monthlyPrice": { "type": "number" },
+        "yearlyMonthlyPrice": { "type": "number" },
+        "highlighted": { "type": "boolean" },
+        "badge": { "type": "string", "maxLength": 40 },
+        "autoBadgeId": { "type": "string", "maxLength": 128 },
+        "ctaLabel": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "features": { "type": "array", "description": "Included feature lines (max 15)." },
+        "sortOrder": { "type": "integer" },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "name", "monthlyPrice", "yearlyMonthlyPrice", "highlighted",
+        "ctaLabel", "features", "sortOrder", "updatedBy", "createdAt", "updatedAt"
+      ]
+    },
+    "UserBadge": {
+      "title": "UserBadge",
+      "description": "Admin-managed badge definition assignable to user accounts.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "description": { "type": "string", "maxLength": 200 },
+        "color": {
+          "type": "string",
+          "enum": ["blue", "emerald", "amber", "violet", "rose", "slate"]
+        },
+        "icon": { "type": "string", "maxLength": 32 },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "color", "icon", "updatedBy", "createdAt", "updatedAt"]
+    },
+    "SiteNotification": {
+      "title": "SiteNotification",
+      "description": "Admin-managed notifications segmented by audience (user, admin, or all).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "audience": { "type": "string", "enum": ["user", "admin", "all"] },
+        "targetUid": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "type": { "type": "string", "enum": ["info", "success", "warning", "billing"] },
+        "linkLabel": { "type": "string", "maxLength": 60 },
+        "linkTarget": { "type": "string", "maxLength": 500 },
+        "isActive": { "type": "boolean" },
+        "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "audience", "targetUid", "title", "message", "type", "isActive", "updatedBy", "createdAt", "updatedAt"]
+    },
+    "NotificationRead": {
+      "title": "NotificationRead",
+      "description": "Per-user read state for a notification.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "readAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "readAt"]
+    },
+    "PaymentGateway": {
+      "title": "PaymentGateway",
+      "description": "Publicly visible payment gateway configuration (never stores private API secrets).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "gatewayType": { "type": "string", "enum": ["stripe", "bank", "bkash", "nagad", "crypto", "custom"] },
+        "enabled": { "type": "boolean" },
+        "accountLabel": { "type": "string", "maxLength": 80 },
+        "accountValue": { "type": "string", "maxLength": 300 },
+        "instructions": { "type": "string", "maxLength": 1000 },
+        "badgeText": { "type": "string", "maxLength": 40 },
+        "sortOrder": { "type": "integer" },
+        "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "gatewayType", "enabled", "sortOrder", "updatedBy", "createdAt", "updatedAt"]
+    },
+    "BillingInvoice": {
+      "title": "BillingInvoice",
+      "description": "User billing invoice tracking paid, pending verification, due, expired, and cancelled transactions.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "invoiceNumber": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userName": { "type": "string", "maxLength": 120 },
+        "userEmail": { "type": "string", "maxLength": 254 },
+        "planId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "planName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "billingCycle": { "type": "string", "enum": ["monthly", "yearly", "one-time"] },
+        "subtotal": { "type": "number" },
+        "taxAmount": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "currency": { "type": "string", "minLength": 1, "maxLength": 12 },
+        "gatewayId": { "type": "string", "maxLength": 128 },
+        "gatewayName": { "type": "string", "maxLength": 80 },
+        "transactionRef": { "type": "string", "maxLength": 160 },
+        "payerAccount": { "type": "string", "maxLength": 160 },
+        "customFields": { "type": "array", "description": "Submitted custom checkout field entries (max 15)." },
+        "status": { "type": "string", "enum": ["paid", "due", "pending", "expired", "cancelled"] },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "dueAtMs": { "type": "integer" },
+        "paidAtMs": { "type": "integer" },
+        "expiresAtMs": { "type": "integer" },
+        "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "invoiceNumber", "userId", "planId", "planName", "billingCycle",
+        "subtotal", "taxAmount", "totalAmount", "currency", "status",
+        "dueAtMs", "paidAtMs", "expiresAtMs", "updatedBy", "createdAt", "updatedAt"
+      ]
+    },
+    "FeatureModule": {
+      "title": "FeatureModule",
+      "description": "Admin-managed feature and connector toggle configuration (add, edit, delete, hide/show, active/inactive).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "key": { "type": "string", "enum": ["text-pdf", "bookmark-share", "llm-chat", "reminders", "whatsapp", "custom"] },
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 400 },
+        "isActive": { "type": "boolean" },
+        "isVisible": { "type": "boolean" },
+        "sortOrder": { "type": "integer" },
+        "badgeText": { "type": "string", "maxLength": 40 },
+        "helperNote": { "type": "string", "maxLength": 500 },
+        "maxSizeMb": { "type": "integer" },
+        "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "key", "name", "isActive", "isVisible", "sortOrder", "updatedBy", "createdAt", "updatedAt"]
+    },
+    "UserReminder": {
+      "title": "UserReminder",
+      "description": "Owner-only scheduled reminder optionally linked to a saved library item with WhatsApp or in-app delivery.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "note": { "type": "string", "maxLength": 600 },
+        "videoId": { "type": "string", "maxLength": 128 },
+        "videoTitle": { "type": "string", "maxLength": 300 },
+        "dueAtMs": { "type": "integer" },
+        "recurrence": { "type": "string", "enum": ["none", "daily", "weekly", "monthly"] },
+        "status": { "type": "string", "enum": ["active", "completed", "dismissed"] },
+        "channel": { "type": "string", "enum": ["in-app", "whatsapp", "both"] },
+        "lastSentAtMs": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "ownerId", "title", "dueAtMs", "recurrence", "status", "channel", "createdAt", "updatedAt"]
+    },
+    "WhatsAppConfig": {
+      "title": "WhatsAppConfig",
+      "description": "Private per-user WhatsApp connector configuration stored in /users/{userId}/private/whatsapp.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "enabled": { "type": "boolean" },
+        "phoneNumber": { "type": "string", "maxLength": 30 },
+        "displayLabel": { "type": "string", "maxLength": 80 },
+        "autoIncludeItemLink": { "type": "boolean" },
+        "deliveryMode": { "type": "string", "enum": ["wa-link", "cloud-api"] },
+        "lastTestedAtMs": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "enabled", "phoneNumber", "deliveryMode", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Owner and admin readable user profile metadata."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "Isolated user PII (info) and private WhatsApp connector config (whatsapp)."
+    },
+    "/users/{userId}/collections/{collectionId}": {
+      "schema": { "$ref": "#/entities/VideoCollection" },
+      "description": "Owner-only custom video collections."
+    },
+    "/users/{userId}/videos/{videoId}": {
+      "schema": { "$ref": "#/entities/AnalyzedVideo" },
+      "description": "Owner-only analyzed items with timestamped segments, summaries, transcripts, and searchable tags."
+    },
+    "/users/{userId}/reminders/{reminderId}": {
+      "schema": { "$ref": "#/entities/UserReminder" },
+      "description": "Owner-only scheduled reminders with in-app and WhatsApp delivery preferences."
+    },
+    "/users/{userId}/notificationReads/{notificationId}": {
+      "schema": { "$ref": "#/entities/NotificationRead" },
+      "description": "Owner-only read status markers for notifications."
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminGrant" },
+      "description": "Administrator grant records."
+    },
+    "/pages/{pageId}": {
+      "schema": { "$ref": "#/entities/SitePage" },
+      "description": "Admin-managed Terms of Service, Privacy Policy, and custom content pages."
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/SiteSettings" },
+      "description": "Publicly readable site branding, metadata, navigation links, checkout settings, and AI defaults; admin-only write."
+    },
+    "/featureModules/{moduleId}": {
+      "schema": { "$ref": "#/entities/FeatureModule" },
+      "description": "Publicly readable, admin-managed feature & connector configurations (active/inactive, visible/hidden)."
+    },
+    "/pricingPlans/{planId}": {
+      "schema": { "$ref": "#/entities/PricingPlan" },
+      "description": "Publicly readable, admin-managed pricing tiers."
+    },
+    "/badges/{badgeId}": {
+      "schema": { "$ref": "#/entities/UserBadge" },
+      "description": "Publicly readable, admin-managed user badge definitions."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/SiteNotification" },
+      "description": "Admin and user notifications separated by audience."
+    },
+    "/paymentGateways/{gatewayId}": {
+      "schema": { "$ref": "#/entities/PaymentGateway" },
+      "description": "Publicly readable payment gateway display configuration; admin-only write."
+    },
+    "/invoices/{invoiceId}": {
+      "schema": { "$ref": "#/entities/BillingInvoice" },
+      "description": "User billing invoices, payment submissions, due/expired status, and receipts."
+    }
+  }
+}

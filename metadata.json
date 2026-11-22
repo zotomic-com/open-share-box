@@ -1,0 +1,6 @@
+{
+  "name": "ClipIndex",
+  "description": "Extract timestamped segments, AI summaries, transcripts, and searchable tags from shared YouTube, TikTok, Instagram, and Facebook videos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

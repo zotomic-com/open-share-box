@@ -1,0 +1,1052 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net: default-deny all reads and writes
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Hardened Primitives ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isVerifiedUser() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == 'zotomic.com@gmail.com'
+      );
+    }
+
+    function userExists(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId));
+    }
+
+    // --- Shared List & Enum Validators ---
+    function isValidRole(role) {
+      return role in ['user', 'admin'];
+    }
+
+    function isValidStatus(status) {
+      return status in ['active', 'suspended', 'pending'];
+    }
+
+    function isValidPlatform(platform) {
+      return platform in [
+        'youtube', 'tiktok', 'instagram', 'facebook', 'vimeo', 'x', 'web',
+        'screenshot', 'upload', 'document', 'pdf', 'chatgpt', 'gemini', 'claude', 'llm', 'other'
+      ];
+    }
+
+    function isValidItemType(itemType) {
+      return itemType in ['video', 'screenshot', 'link', 'document', 'ai-chat'];
+    }
+
+    function isValidPageType(pageType) {
+      return pageType in ['legal', 'guide', 'custom'];
+    }
+
+    function isValidAiDepth(depth) {
+      return depth in ['fast', 'balanced'];
+    }
+
+    function isValidStringList(arr, maxLen) {
+      return arr is list
+        && arr.size() <= maxLen
+        && (arr.size() == 0 || (arr[0] is string && arr[0].size() <= 500));
+    }
+
+    function isValidMapList(arr, maxLen) {
+      return arr is list
+        && arr.size() <= maxLen
+        && (arr.size() == 0 || arr[0] is map);
+    }
+
+    function isValidBadgeColor(color) {
+      return color in ['blue', 'emerald', 'amber', 'violet', 'rose', 'slate'];
+    }
+
+    function isValidPlanStatus(planStatus) {
+      return planStatus in ['none', 'active', 'due', 'expired'];
+    }
+
+    function isValidNotificationAudience(audience) {
+      return audience in ['user', 'admin', 'all'];
+    }
+
+    function isValidNotificationSeverity(sev) {
+      return sev in ['info', 'success', 'warning', 'billing'];
+    }
+
+    function isValidGatewayType(gt) {
+      return gt in ['stripe', 'bank', 'bkash', 'nagad', 'crypto', 'custom'];
+    }
+
+    function isValidInvoiceStatus(st) {
+      return st in ['paid', 'due', 'pending', 'expired', 'cancelled'];
+    }
+
+    function isValidBillingCycle(bc) {
+      return bc in ['monthly', 'yearly', 'one-time'];
+    }
+
+    function isValidFeatureModuleKey(k) {
+      return k in ['text-pdf', 'bookmark-share', 'llm-chat', 'reminders', 'whatsapp', 'custom'];
+    }
+
+    function isValidReminderRecurrence(rec) {
+      return rec in ['none', 'daily', 'weekly', 'monthly'];
+    }
+
+    function isValidReminderStatus(st) {
+      return st in ['active', 'completed', 'dismissed'];
+    }
+
+    function isValidReminderChannel(ch) {
+      return ch in ['in-app', 'whatsapp', 'both'];
+    }
+
+    function isValidWhatsAppMode(m) {
+      return m in ['wa-link', 'cloud-api'];
+    }
+
+    // --- Entity Validation Blueprints ---
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'role', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'uid', 'displayName', 'photoURL', 'role', 'status',
+          'bio', 'organization', 'location', 'videoCount', 'badgeIds',
+          'activePlanId', 'planStatus', 'planExpiresAtMs',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.displayName is string
+        && data.displayName.size() >= 1
+        && data.displayName.size() <= 120
+        && (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 1000))
+        && data.role is string
+        && isValidRole(data.role)
+        && data.status is string
+        && isValidStatus(data.status)
+        && (!('bio' in data) || (data.bio is string && data.bio.size() <= 500))
+        && (!('organization' in data) || (data.organization is string && data.organization.size() <= 120))
+        && (!('location' in data) || (data.location is string && data.location.size() <= 120))
+        && (!('videoCount' in data) || (data.videoCount is int && data.videoCount >= 0 && data.videoCount <= 100000))
+        && (!('badgeIds' in data) || isValidStringList(data.badgeIds, 10))
+        && (!('activePlanId' in data) || (data.activePlanId is string && data.activePlanId.size() <= 128))
+        && (!('planStatus' in data) || (data.planStatus is string && isValidPlanStatus(data.planStatus)))
+        && (!('planExpiresAtMs' in data) || (data.planExpiresAtMs is int && data.planExpiresAtMs >= 0))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUserPrivateInfo(data, userId) {
+      return data.keys().hasAll(['uid', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'phone', 'address', 'adminNotes', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && (!('email' in data) || (data.email is string && data.email.size() <= 254))
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 40))
+        && (!('address' in data) || (data.address is string && data.address.size() <= 300))
+        && (!('adminNotes' in data) || (data.adminNotes is string && data.adminNotes.size() <= 2000))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAdminGrant(data, userId) {
+      return data.keys().hasAll(['uid', 'grantedBy', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'grantedBy', 'createdAt'])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && isValidId(data.grantedBy)
+        && data.createdAt is timestamp;
+    }
+
+    function isValidSitePage(data, pageId) {
+      return data.keys().hasAll([
+          'id', 'slug', 'title', 'pageType', 'isPublished',
+          'blocks', 'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'slug', 'title', 'subtitle', 'pageType', 'isPublished',
+          'blocks', 'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.id == pageId
+        && data.slug is string
+        && data.slug.size() >= 1
+        && data.slug.size() <= 100
+        && data.slug.matches('^[a-z0-9\\-]+$')
+        && data.title is string
+        && data.title.size() >= 1
+        && data.title.size() <= 160
+        && (!('subtitle' in data) || (data.subtitle is string && data.subtitle.size() <= 300))
+        && data.pageType is string
+        && isValidPageType(data.pageType)
+        && data.isPublished is bool
+        && isValidMapList(data.blocks, 40)
+        && isValidId(data.updatedBy)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSiteSettings(data, settingId) {
+      return settingId == 'site'
+        && data.keys().hasAll(['id', 'siteName', 'aiDefaultDepth', 'updatedBy', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'id', 'siteName', 'tagline', 'logoUrl', 'faviconUrl',
+          'metaTitle', 'metaDescription', 'ogImageUrl', 'canonicalUrl',
+          'googleSiteVerification', 'googleHtmlFileName', 'googleHtmlFileContent',
+          'aiDefaultDepth', 'aiDefaultLanguage', 'aiCustomInstruction',
+          'socialLoginEnabled', 'googleLoginEnabled', 'facebookLoginEnabled', 'facebookAppId',
+          'pricingEnabled',
+          'headerLinks', 'footerLinks', 'footerText',
+          'checkoutEnabled', 'checkoutTitle', 'checkoutSubtitle',
+          'checkoutCurrency', 'checkoutTaxPercent', 'checkoutNotice', 'checkoutCustomFields',
+          'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && data.id == 'site'
+        && data.siteName is string
+        && data.siteName.size() >= 1
+        && data.siteName.size() <= 80
+        && (!('tagline' in data) || (data.tagline is string && data.tagline.size() <= 160))
+        && (!('logoUrl' in data) || (data.logoUrl is string && data.logoUrl.size() <= 1000))
+        && (!('faviconUrl' in data) || (data.faviconUrl is string && data.faviconUrl.size() <= 1000))
+        && (!('metaTitle' in data) || (data.metaTitle is string && data.metaTitle.size() <= 120))
+        && (!('metaDescription' in data) || (data.metaDescription is string && data.metaDescription.size() <= 320))
+        && (!('ogImageUrl' in data) || (data.ogImageUrl is string && data.ogImageUrl.size() <= 1000))
+        && (!('canonicalUrl' in data) || (data.canonicalUrl is string && data.canonicalUrl.size() <= 500))
+        && (!('googleSiteVerification' in data) || (
+          data.googleSiteVerification is string
+          && data.googleSiteVerification.size() <= 128
+          && data.googleSiteVerification.matches('^[a-zA-Z0-9_\\-]*$')
+        ))
+        && (!('googleHtmlFileName' in data) || (
+          data.googleHtmlFileName is string
+          && data.googleHtmlFileName.size() <= 80
+          && data.googleHtmlFileName.matches('^(google[a-zA-Z0-9]+\\.html)?$')
+        ))
+        && (!('googleHtmlFileContent' in data) || (data.googleHtmlFileContent is string && data.googleHtmlFileContent.size() <= 200))
+        && data.aiDefaultDepth is string
+        && isValidAiDepth(data.aiDefaultDepth)
+        && (!('aiDefaultLanguage' in data) || (data.aiDefaultLanguage is string && data.aiDefaultLanguage.size() <= 60))
+        && (!('aiCustomInstruction' in data) || (data.aiCustomInstruction is string && data.aiCustomInstruction.size() <= 1000))
+        && (!('socialLoginEnabled' in data) || data.socialLoginEnabled is bool)
+        && (!('googleLoginEnabled' in data) || data.googleLoginEnabled is bool)
+        && (!('facebookLoginEnabled' in data) || data.facebookLoginEnabled is bool)
+        && (!('facebookAppId' in data) || (data.facebookAppId is string && data.facebookAppId.size() <= 64 && data.facebookAppId.matches('^[0-9a-zA-Z_\\-]*$')))
+        && (!('pricingEnabled' in data) || data.pricingEnabled is bool)
+        && (!('headerLinks' in data) || isValidMapList(data.headerLinks, 20))
+        && (!('footerLinks' in data) || isValidMapList(data.footerLinks, 25))
+        && (!('footerText' in data) || (data.footerText is string && data.footerText.size() <= 300))
+        && (!('checkoutEnabled' in data) || data.checkoutEnabled is bool)
+        && (!('checkoutTitle' in data) || (data.checkoutTitle is string && data.checkoutTitle.size() <= 120))
+        && (!('checkoutSubtitle' in data) || (data.checkoutSubtitle is string && data.checkoutSubtitle.size() <= 300))
+        && (!('checkoutCurrency' in data) || (data.checkoutCurrency is string && data.checkoutCurrency.size() <= 12))
+        && (!('checkoutTaxPercent' in data) || ((data.checkoutTaxPercent is int || data.checkoutTaxPercent is float) && data.checkoutTaxPercent >= 0 && data.checkoutTaxPercent <= 100))
+        && (!('checkoutNotice' in data) || (data.checkoutNotice is string && data.checkoutNotice.size() <= 1000))
+        && (!('checkoutCustomFields' in data) || isValidMapList(data.checkoutCustomFields, 15))
+        && isValidId(data.updatedBy)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPricingPlan(data, planId) {
+      return data.keys().hasAll([
+          'id', 'name', 'monthlyPrice', 'yearlyMonthlyPrice', 'highlighted',
+          'ctaLabel', 'features', 'sortOrder', 'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'name', 'tagline', 'monthlyPrice', 'yearlyMonthlyPrice', 'highlighted',
+          'badge', 'autoBadgeId', 'ctaLabel', 'features', 'sortOrder', 'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.id == planId
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 80
+        && (!('tagline' in data) || (data.tagline is string && data.tagline.size() <= 240))
+        && (data.monthlyPrice is int || data.monthlyPrice is float)
+        && data.monthlyPrice >= 0
+        && data.monthlyPrice <= 100000
+        && (data.yearlyMonthlyPrice is int || data.yearlyMonthlyPrice is float)
+        && data.yearlyMonthlyPrice >= 0
+        && data.yearlyMonthlyPrice <= 100000
+        && data.highlighted is bool
+        && (!('badge' in data) || (data.badge is string && data.badge.size() <= 40))
+        && (!('autoBadgeId' in data) || (data.autoBadgeId is string && (data.autoBadgeId == '' || isValidId(data.autoBadgeId))))
+        && data.ctaLabel is string
+        && data.ctaLabel.size() >= 1
+        && data.ctaLabel.size() <= 60
+        && isValidStringList(data.features, 15)
+        && data.sortOrder is int
+        && data.sortOrder >= 0
+        && data.sortOrder <= 1000
+        && isValidId(data.updatedBy)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidBadge(data, badgeId) {
+      return data.keys().hasAll(['id', 'name', 'color', 'icon', 'updatedBy', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'name', 'description', 'color', 'icon', 'updatedBy', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && data.id == badgeId
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 40
+        && (!('description' in data) || (data.description is string && data.description.size() <= 200))
+        && data.color is string
+        && isValidBadgeColor(data.color)
+        && data.icon is string
+        && data.icon.size() >= 1
+        && data.icon.size() <= 32
+        && isValidId(data.updatedBy)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSiteNotification(data, notifId) {
+      return data.keys().hasAll([
+          'id', 'audience', 'targetUid', 'title', 'message', 'type',
+          'isActive', 'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'audience', 'targetUid', 'title', 'message', 'type',
+          'linkLabel', 'linkTarget', 'isActive', 'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.id == notifId
+        && data.audience is string
+        && isValidNotificationAudience(data.audience)
+        && data.targetUid is string
+        && (data.targetUid == '' || isValidId(data.targetUid))
+        && data.title is string
+        && data.title.size() >= 1
+        && data.title.size() <= 140
+        && data.message is string
+        && data.message.size() >= 1
+        && data.message.size() <= 1000
+        && data.type is string
+        && isValidNotificationSeverity(data.type)
+        && (!('linkLabel' in data) || (data.linkLabel is string && data.linkLabel.size() <= 60))
+        && (!('linkTarget' in data) || (data.linkTarget is string && data.linkTarget.size() <= 500))
+        && data.isActive is bool
+        && isValidId(data.updatedBy)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidNotificationRead(data, notifId) {
+      return data.keys().hasAll(['id', 'readAt'])
+        && data.keys().hasOnly(['id', 'readAt'])
+        && isValidId(data.id)
+        && data.id == notifId
+        && data.readAt is timestamp;
+    }
+
+    function isValidPaymentGateway(data, gatewayId) {
+      return data.keys().hasAll([
+          'id', 'name', 'gatewayType', 'enabled', 'sortOrder',
+          'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'name', 'gatewayType', 'enabled', 'accountLabel',
+          'accountValue', 'instructions', 'badgeText', 'sortOrder',
+          'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.id == gatewayId
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 80
+        && data.gatewayType is string
+        && isValidGatewayType(data.gatewayType)
+        && data.enabled is bool
+        && (!('accountLabel' in data) || (data.accountLabel is string && data.accountLabel.size() <= 80))
+        && (!('accountValue' in data) || (data.accountValue is string && data.accountValue.size() <= 300))
+        && (!('instructions' in data) || (data.instructions is string && data.instructions.size() <= 1000))
+        && (!('badgeText' in data) || (data.badgeText is string && data.badgeText.size() <= 40))
+        && data.sortOrder is int
+        && data.sortOrder >= 0
+        && data.sortOrder <= 1000
+        && isValidId(data.updatedBy)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidBillingInvoice(data, invoiceId) {
+      return data.keys().hasAll([
+          'id', 'invoiceNumber', 'userId', 'planId', 'planName', 'billingCycle',
+          'subtotal', 'taxAmount', 'totalAmount', 'currency', 'status',
+          'dueAtMs', 'paidAtMs', 'expiresAtMs', 'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'invoiceNumber', 'userId', 'userName', 'userEmail',
+          'planId', 'planName', 'billingCycle', 'subtotal', 'taxAmount', 'totalAmount',
+          'currency', 'gatewayId', 'gatewayName', 'transactionRef', 'payerAccount',
+          'customFields', 'status', 'notes', 'dueAtMs', 'paidAtMs', 'expiresAtMs',
+          'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.id == invoiceId
+        && data.invoiceNumber is string
+        && data.invoiceNumber.size() >= 1
+        && data.invoiceNumber.size() <= 40
+        && isValidId(data.userId)
+        && (!('userName' in data) || (data.userName is string && data.userName.size() <= 120))
+        && (!('userEmail' in data) || (data.userEmail is string && data.userEmail.size() <= 254))
+        && data.planId is string
+        && data.planId.size() >= 1
+        && data.planId.size() <= 128
+        && data.planName is string
+        && data.planName.size() >= 1
+        && data.planName.size() <= 120
+        && data.billingCycle is string
+        && isValidBillingCycle(data.billingCycle)
+        && (data.subtotal is int || data.subtotal is float)
+        && data.subtotal >= 0
+        && data.subtotal <= 1000000
+        && (data.taxAmount is int || data.taxAmount is float)
+        && data.taxAmount >= 0
+        && data.taxAmount <= 1000000
+        && (data.totalAmount is int || data.totalAmount is float)
+        && data.totalAmount >= 0
+        && data.totalAmount <= 1000000
+        && data.currency is string
+        && data.currency.size() >= 1
+        && data.currency.size() <= 12
+        && (!('gatewayId' in data) || (data.gatewayId is string && data.gatewayId.size() <= 128))
+        && (!('gatewayName' in data) || (data.gatewayName is string && data.gatewayName.size() <= 80))
+        && (!('transactionRef' in data) || (data.transactionRef is string && data.transactionRef.size() <= 160))
+        && (!('payerAccount' in data) || (data.payerAccount is string && data.payerAccount.size() <= 160))
+        && (!('customFields' in data) || isValidMapList(data.customFields, 15))
+        && data.status is string
+        && isValidInvoiceStatus(data.status)
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000))
+        && data.dueAtMs is int
+        && data.dueAtMs >= 0
+        && data.paidAtMs is int
+        && data.paidAtMs >= 0
+        && data.expiresAtMs is int
+        && data.expiresAtMs >= 0
+        && isValidId(data.updatedBy)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCollection(data, userId, collectionId) {
+      return data.keys().hasAll(['id', 'ownerId', 'name', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'ownerId', 'name', 'description', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && data.id == collectionId
+        && isValidId(data.ownerId)
+        && data.ownerId == userId
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 80
+        && (!('description' in data) || (data.description is string && data.description.size() <= 300))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidVideo(data, userId, videoId) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'url', 'platform', 'title', 'summary',
+          'tldrBullets', 'tags', 'segments', 'transcript', 'isFavorite',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerId', 'itemType', 'url', 'platform', 'title', 'creator',
+          'thumbnailUrl', 'durationLabel', 'category', 'collectionId',
+          'isFavorite', 'saveReason', 'localMediaId', 'summary', 'tldrBullets',
+          'tags', 'segments', 'transcript', 'links', 'notes', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.id == videoId
+        && isValidId(data.ownerId)
+        && data.ownerId == userId
+        && (!('itemType' in data) || (data.itemType is string && isValidItemType(data.itemType)))
+        && data.url is string
+        && data.url.size() >= 1
+        && data.url.size() <= 2048
+        && !data.url.matches('^data:.*')
+        && data.platform is string
+        && isValidPlatform(data.platform)
+        && data.title is string
+        && data.title.size() >= 1
+        && data.title.size() <= 300
+        && (!('creator' in data) || (data.creator is string && data.creator.size() <= 150))
+        && (!('thumbnailUrl' in data) || (data.thumbnailUrl is string && data.thumbnailUrl.size() <= 2048 && !data.thumbnailUrl.matches('^data:.*')))
+        && (!('durationLabel' in data) || (data.durationLabel is string && data.durationLabel.size() <= 32))
+        && (!('category' in data) || (data.category is string && data.category.size() <= 80))
+        && (!('collectionId' in data) || (data.collectionId is string && (data.collectionId == '' || isValidId(data.collectionId))))
+        && data.isFavorite is bool
+        && (!('saveReason' in data) || (data.saveReason is string && data.saveReason.size() <= 80))
+        && (!('localMediaId' in data) || (data.localMediaId is string && (data.localMediaId == '' || isValidId(data.localMediaId))))
+        && data.summary is string
+        && data.summary.size() >= 1
+        && data.summary.size() <= 5000
+        && isValidStringList(data.tldrBullets, 10)
+        && isValidStringList(data.tags, 15)
+        && isValidMapList(data.segments, 60)
+        && isValidMapList(data.transcript, 200)
+        && (!('links' in data) || isValidMapList(data.links, 30))
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 10000))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidFeatureModule(data, moduleId) {
+      return data.keys().hasAll([
+          'id', 'key', 'name', 'isActive', 'isVisible', 'sortOrder',
+          'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'key', 'name', 'description', 'isActive', 'isVisible',
+          'sortOrder', 'badgeText', 'helperNote', 'maxSizeMb',
+          'updatedBy', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.id == moduleId
+        && data.key is string
+        && isValidFeatureModuleKey(data.key)
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 100
+        && (!('description' in data) || (data.description is string && data.description.size() <= 400))
+        && data.isActive is bool
+        && data.isVisible is bool
+        && data.sortOrder is int
+        && data.sortOrder >= 0
+        && data.sortOrder <= 1000
+        && (!('badgeText' in data) || (data.badgeText is string && data.badgeText.size() <= 40))
+        && (!('helperNote' in data) || (data.helperNote is string && data.helperNote.size() <= 500))
+        && (!('maxSizeMb' in data) || (data.maxSizeMb is int && data.maxSizeMb >= 1 && data.maxSizeMb <= 100))
+        && isValidId(data.updatedBy)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUserReminder(data, userId, reminderId) {
+      return data.keys().hasAll([
+          'id', 'ownerId', 'title', 'dueAtMs', 'recurrence', 'status',
+          'channel', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'ownerId', 'title', 'note', 'videoId', 'videoTitle',
+          'dueAtMs', 'recurrence', 'status', 'channel', 'lastSentAtMs',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.id == reminderId
+        && isValidId(data.ownerId)
+        && data.ownerId == userId
+        && data.title is string
+        && data.title.size() >= 1
+        && data.title.size() <= 160
+        && (!('note' in data) || (data.note is string && data.note.size() <= 600))
+        && (!('videoId' in data) || (data.videoId is string && (data.videoId == '' || isValidId(data.videoId))))
+        && (!('videoTitle' in data) || (data.videoTitle is string && data.videoTitle.size() <= 300))
+        && data.dueAtMs is int
+        && data.dueAtMs >= 0
+        && data.recurrence is string
+        && isValidReminderRecurrence(data.recurrence)
+        && data.status is string
+        && isValidReminderStatus(data.status)
+        && data.channel is string
+        && isValidReminderChannel(data.channel)
+        && (!('lastSentAtMs' in data) || (data.lastSentAtMs is int && data.lastSentAtMs >= 0))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidWhatsAppConfig(data, userId) {
+      return data.keys().hasAll(['uid', 'enabled', 'phoneNumber', 'deliveryMode', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'uid', 'enabled', 'phoneNumber', 'displayLabel',
+          'autoIncludeItemLink', 'deliveryMode', 'lastTestedAtMs',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.enabled is bool
+        && data.phoneNumber is string
+        && data.phoneNumber.size() <= 30
+        && (!('displayLabel' in data) || (data.displayLabel is string && data.displayLabel.size() <= 80))
+        && (!('autoIncludeItemLink' in data) || data.autoIncludeItemLink is bool)
+        && data.deliveryMode is string
+        && isValidWhatsAppMode(data.deliveryMode)
+        && (!('lastTestedAtMs' in data) || (data.lastTestedAtMs is int && data.lastTestedAtMs >= 0))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // --- /admins/{userId} ---
+    match /admins/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(userId)
+        && isAdmin()
+        && isValidAdminGrant(incoming(), userId)
+        && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    // --- /pages/{pageId} (Terms of Service, Privacy Policy, Custom Pages) ---
+    match /pages/{pageId} {
+      allow get: if isValidId(pageId) && (resource.data.isPublished == true || isAdmin());
+      allow list: if resource.data.isPublished == true || isAdmin();
+      allow create: if isValidId(pageId)
+        && isAdmin()
+        && isValidSitePage(incoming(), pageId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(pageId)
+        && isAdmin()
+        && isValidSitePage(incoming(), pageId)
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'slug', 'title', 'subtitle', 'pageType', 'isPublished', 'blocks', 'updatedBy', 'updatedAt'
+        ]);
+      allow delete: if isValidId(pageId) && isAdmin();
+    }
+
+    // --- /settings/{settingId} (Global Site Branding, Metadata & AI Defaults) ---
+    match /settings/{settingId} {
+      allow get: if isValidId(settingId) && settingId == 'site';
+      allow list: if false;
+      allow create: if settingId == 'site'
+        && isAdmin()
+        && isValidSiteSettings(incoming(), settingId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if settingId == 'site'
+        && isAdmin()
+        && isValidSiteSettings(incoming(), settingId)
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if settingId == 'site' && isAdmin();
+    }
+
+    // --- /featureModules/{moduleId} (Admin-Managed Feature & Connector Controls) ---
+    match /featureModules/{moduleId} {
+      allow get: if isValidId(moduleId);
+      allow list: if true;
+      allow create: if isValidId(moduleId)
+        && isAdmin()
+        && isValidFeatureModule(incoming(), moduleId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(moduleId)
+        && isAdmin()
+        && isValidFeatureModule(incoming(), moduleId)
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(moduleId) && isAdmin();
+    }
+
+    // --- /pricingPlans/{planId} (Admin-Managed Public Pricing Plans) ---
+    match /pricingPlans/{planId} {
+      allow get: if isValidId(planId);
+      allow list: if true;
+      allow create: if isValidId(planId)
+        && isAdmin()
+        && isValidPricingPlan(incoming(), planId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(planId)
+        && isAdmin()
+        && isValidPricingPlan(incoming(), planId)
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(planId) && isAdmin();
+    }
+
+    // --- /badges/{badgeId} (Admin-Managed User Badges) ---
+    match /badges/{badgeId} {
+      allow get: if isValidId(badgeId);
+      allow list: if true;
+      allow create: if isValidId(badgeId)
+        && isAdmin()
+        && isValidBadge(incoming(), badgeId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(badgeId)
+        && isAdmin()
+        && isValidBadge(incoming(), badgeId)
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(badgeId) && isAdmin();
+    }
+
+    // --- /notifications/{notificationId} (Separated Admin & User Notifications) ---
+    match /notifications/{notificationId} {
+      allow get: if isValidId(notificationId) && (
+        isAdmin() ||
+        (
+          isVerifiedUser()
+          && resource.data.isActive == true
+          && resource.data.audience in ['user', 'all']
+          && (resource.data.targetUid == '' || resource.data.targetUid == request.auth.uid)
+        )
+      );
+      allow list: if isAdmin() || (
+        isVerifiedUser()
+        && resource.data.isActive == true
+        && resource.data.audience in ['user', 'all']
+        && (resource.data.targetUid == '' || resource.data.targetUid == request.auth.uid)
+      );
+      allow create: if isValidId(notificationId)
+        && isAdmin()
+        && isValidSiteNotification(incoming(), notificationId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(notificationId)
+        && isAdmin()
+        && isValidSiteNotification(incoming(), notificationId)
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(notificationId) && isAdmin();
+    }
+
+    // --- /paymentGateways/{gatewayId} (Public Payment Methods & Admin Toggles) ---
+    match /paymentGateways/{gatewayId} {
+      allow get: if isValidId(gatewayId);
+      allow list: if true;
+      allow create: if isValidId(gatewayId)
+        && isAdmin()
+        && isValidPaymentGateway(incoming(), gatewayId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(gatewayId)
+        && isAdmin()
+        && isValidPaymentGateway(incoming(), gatewayId)
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(gatewayId) && isAdmin();
+    }
+
+    // --- /invoices/{invoiceId} (User Bills, Revenue, Due/Expired & Receipts) ---
+    match /invoices/{invoiceId} {
+      allow get: if isValidId(invoiceId) && (
+        isAdmin() ||
+        (isVerifiedUser() && resource.data.userId == request.auth.uid)
+      );
+      allow list: if isAdmin() || (isVerifiedUser() && resource.data.userId == request.auth.uid);
+      allow create: if isValidId(invoiceId)
+        && isValidBillingInvoice(incoming(), invoiceId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (
+            isVerifiedUser()
+            && incoming().userId == request.auth.uid
+            && incoming().updatedBy == request.auth.uid
+            && (
+              incoming().status in ['pending', 'due']
+              || (incoming().status == 'paid' && incoming().totalAmount == 0 && incoming().planId == 'starter')
+            )
+          )
+        );
+      allow update: if isValidId(invoiceId)
+        && isValidBillingInvoice(incoming(), invoiceId)
+        && incoming().id == existing().id
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin()
+          || (
+            isVerifiedUser()
+            && existing().userId == request.auth.uid
+            && existing().status in ['due', 'pending']
+            && incoming().status in ['due', 'pending']
+            && incoming().totalAmount == existing().totalAmount
+            && incoming().planId == existing().planId
+            && incoming().updatedBy == request.auth.uid
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'gatewayId', 'gatewayName', 'transactionRef', 'payerAccount',
+              'customFields', 'status', 'updatedBy', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isValidId(invoiceId) && isAdmin();
+    }
+
+    // --- /users/{userId} ---
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (
+            isOwner(userId)
+            && incoming().role == 'user'
+            && incoming().status == 'active'
+            && (!('badgeIds' in incoming()) || incoming().badgeIds.size() == 0)
+            && (!('activePlanId' in incoming()) || incoming().activePlanId == '')
+            && (!('planStatus' in incoming()) || incoming().planStatus == 'none')
+          )
+        );
+      allow update: if isValidId(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (
+            isAdmin()
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'displayName', 'photoURL', 'role', 'status',
+              'bio', 'organization', 'location', 'videoCount', 'badgeIds',
+              'activePlanId', 'planStatus', 'planExpiresAtMs', 'updatedAt'
+            ])
+          )
+          ||
+          (
+            isOwner(userId)
+            && incoming().role == existing().role
+            && incoming().status == existing().status
+            && incoming().get('badgeIds', []) == existing().get('badgeIds', [])
+            && incoming().get('activePlanId', '') == existing().get('activePlanId', '')
+            && incoming().get('planStatus', 'none') == existing().get('planStatus', 'none')
+            && incoming().get('planExpiresAtMs', 0) == existing().get('planExpiresAtMs', 0)
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'displayName', 'photoURL', 'bio', 'organization', 'location', 'videoCount', 'updatedAt'
+            ])
+          )
+          ||
+          (
+            isOwner(userId)
+            && incoming().role == existing().role
+            && incoming().status == existing().status
+            && incoming().activePlanId == 'starter'
+            && incoming().planStatus == 'active'
+            && incoming().get('planExpiresAtMs', 0) == 0
+            && (
+              incoming().get('badgeIds', []) == existing().get('badgeIds', [])
+              || (existing().get('badgeIds', []).size() == 0 && incoming().get('badgeIds', []) == ['badge-starter'])
+            )
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'activePlanId', 'planStatus', 'planExpiresAtMs', 'badgeIds', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if isValidId(userId) && isAdmin();
+
+      // --- /users/{userId}/private/{docId} (PII, Admin Notes & Private WhatsApp Config) ---
+      match /private/{docId} {
+        allow get: if isValidId(userId) && docId in ['info', 'whatsapp'] && (isOwner(userId) || isAdmin());
+        allow list: if isValidId(userId) && isAdmin();
+        allow create: if isValidId(userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId)
+          && (
+            (
+              docId == 'info'
+              && isValidUserPrivateInfo(incoming(), userId)
+              && (isAdmin() || (isOwner(userId) && !('adminNotes' in incoming())))
+            )
+            ||
+            (
+              docId == 'whatsapp'
+              && (isOwner(userId) || isAdmin())
+              && isValidWhatsAppConfig(incoming(), userId)
+            )
+          );
+        allow update: if isValidId(userId)
+          && incoming().uid == existing().uid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            (
+              docId == 'info'
+              && isValidUserPrivateInfo(incoming(), userId)
+              && (
+                (
+                  isAdmin()
+                  && incoming().diff(existing()).affectedKeys().hasOnly([
+                    'email', 'phone', 'address', 'adminNotes', 'updatedAt'
+                  ])
+                )
+                ||
+                (
+                  isOwner(userId)
+                  && incoming().diff(existing()).affectedKeys().hasOnly([
+                    'email', 'phone', 'address', 'updatedAt'
+                  ])
+                )
+              )
+            )
+            ||
+            (
+              docId == 'whatsapp'
+              && (isOwner(userId) || isAdmin())
+              && isValidWhatsAppConfig(incoming(), userId)
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'enabled', 'phoneNumber', 'displayLabel', 'autoIncludeItemLink',
+                'deliveryMode', 'lastTestedAtMs', 'updatedAt'
+              ])
+            )
+          );
+        allow delete: if isValidId(userId) && (
+          (docId == 'info' && isAdmin()) ||
+          (docId == 'whatsapp' && (isOwner(userId) || isAdmin()))
+        );
+      }
+
+      // --- /users/{userId}/collections/{collectionId} ---
+      match /collections/{collectionId} {
+        allow get: if isValidId(userId) && isValidId(collectionId) && (isOwner(userId) || isAdmin());
+        allow list: if isValidId(userId) && (
+          (isOwner(userId) && resource.data.ownerId == request.auth.uid) ||
+          isAdmin()
+        );
+        allow create: if isValidId(userId)
+          && isValidId(collectionId)
+          && isOwner(userId)
+          && isValidCollection(incoming(), userId, collectionId)
+          && incoming().ownerId == request.auth.uid
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId)
+          && isValidId(collectionId)
+          && isOwner(userId)
+          && isValidCollection(incoming(), userId, collectionId)
+          && incoming().id == existing().id
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'updatedAt']);
+        allow delete: if isValidId(userId) && isValidId(collectionId) && (isOwner(userId) || isAdmin());
+      }
+
+      // --- /users/{userId}/videos/{videoId} ---
+      match /videos/{videoId} {
+        allow get: if isValidId(userId) && isValidId(videoId) && (isOwner(userId) || isAdmin());
+        allow list: if isValidId(userId) && (
+          (isOwner(userId) && resource.data.ownerId == request.auth.uid) ||
+          isAdmin()
+        );
+        allow create: if isValidId(userId)
+          && isValidId(videoId)
+          && isOwner(userId)
+          && isValidVideo(incoming(), userId, videoId)
+          && incoming().ownerId == request.auth.uid
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId)
+          && isValidId(videoId)
+          && isOwner(userId)
+          && isValidVideo(incoming(), userId, videoId)
+          && incoming().id == existing().id
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            incoming().diff(existing()).affectedKeys().hasOnly(['isFavorite', 'updatedAt'])
+            || incoming().diff(existing()).affectedKeys().hasOnly(['collectionId', 'updatedAt'])
+            || incoming().diff(existing()).affectedKeys().hasOnly(['tags', 'updatedAt'])
+            || incoming().diff(existing()).affectedKeys().hasOnly(['notes', 'updatedAt'])
+            || incoming().diff(existing()).affectedKeys().hasOnly(['saveReason', 'updatedAt'])
+            || incoming().diff(existing()).affectedKeys().hasOnly(['notes', 'saveReason', 'updatedAt'])
+            || incoming().diff(existing()).affectedKeys().hasOnly(['links', 'updatedAt'])
+            || incoming().diff(existing()).affectedKeys().hasOnly(['localMediaId', 'updatedAt'])
+            || incoming().diff(existing()).affectedKeys().hasOnly(['title', 'category', 'tags', 'collectionId', 'notes', 'saveReason', 'updatedAt'])
+            || incoming().diff(existing()).affectedKeys().hasOnly(['segments', 'transcript', 'summary', 'tldrBullets', 'tags', 'links', 'durationLabel', 'updatedAt'])
+          );
+        allow delete: if isValidId(userId) && isValidId(videoId) && (isOwner(userId) || isAdmin());
+      }
+
+      // --- /users/{userId}/reminders/{reminderId} ---
+      match /reminders/{reminderId} {
+        allow get: if isValidId(userId) && isValidId(reminderId) && (isOwner(userId) || isAdmin());
+        allow list: if isValidId(userId) && (
+          (isOwner(userId) && resource.data.ownerId == request.auth.uid) ||
+          isAdmin()
+        );
+        allow create: if isValidId(userId)
+          && isValidId(reminderId)
+          && isOwner(userId)
+          && isValidUserReminder(incoming(), userId, reminderId)
+          && incoming().ownerId == request.auth.uid
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId)
+          && isValidId(reminderId)
+          && isOwner(userId)
+          && isValidUserReminder(incoming(), userId, reminderId)
+          && incoming().id == existing().id
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'title', 'note', 'videoId', 'videoTitle', 'dueAtMs',
+            'recurrence', 'status', 'channel', 'lastSentAtMs', 'updatedAt'
+          ]);
+        allow delete: if isValidId(userId) && isValidId(reminderId) && (isOwner(userId) || isAdmin());
+      }
+
+      // --- /users/{userId}/notificationReads/{notificationId} ---
+      match /notificationReads/{notificationId} {
+        allow get: if isValidId(userId) && isValidId(notificationId) && isOwner(userId);
+        allow list: if isValidId(userId) && isOwner(userId);
+        allow create: if isValidId(userId)
+          && isValidId(notificationId)
+          && isOwner(userId)
+          && isValidNotificationRead(incoming(), notificationId)
+          && incoming().readAt == request.time
+          && userExists(userId);
+        allow update: if isValidId(userId)
+          && isValidId(notificationId)
+          && isOwner(userId)
+          && isValidNotificationRead(incoming(), notificationId)
+          && incoming().id == existing().id
+          && incoming().readAt == request.time;
+        allow delete: if isValidId(userId) && isValidId(notificationId) && isOwner(userId);
+      }
+    }
+  }
+}
