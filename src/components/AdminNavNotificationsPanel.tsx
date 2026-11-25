@@ -23,6 +23,7 @@ import type {
 } from '../types/video';
 import { updatePartialSiteSettingsAdmin } from '../lib/adminStore';
 import { deleteNotificationAdmin, saveNotificationAdmin } from '../lib/billingStore';
+import { HOMEPAGE_SECTION_ANCHORS } from '../lib/homepageDefaults';
 import { generateSafeId } from '../lib/videoUtils';
 
 interface AdminNavPanelProps {
@@ -30,6 +31,19 @@ interface AdminNavPanelProps {
   siteSettings: SiteSettings;
   pages: SitePage[];
 }
+
+const HOMEPAGE_ANCHOR_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: HOMEPAGE_SECTION_ANCHORS.hero, label: 'Hero / top of homepage' },
+  { value: HOMEPAGE_SECTION_ANCHORS.problem, label: 'The problem' },
+  { value: HOMEPAGE_SECTION_ANCHORS.steps, label: 'How it works' },
+  { value: HOMEPAGE_SECTION_ANCHORS['content-types'], label: 'What you can save' },
+  { value: HOMEPAGE_SECTION_ANCHORS.transformation, label: 'Transformation' },
+  { value: HOMEPAGE_SECTION_ANCHORS['search-demo'], label: 'Search demo' },
+  { value: HOMEPAGE_SECTION_ANCHORS['product-flow'], label: 'Product flow / demo' },
+  { value: HOMEPAGE_SECTION_ANCHORS.features, label: 'Features' },
+  { value: HOMEPAGE_SECTION_ANCHORS.privacy, label: 'Privacy' },
+  { value: HOMEPAGE_SECTION_ANCHORS.cta, label: 'Final call to action' },
+];
 
 export const AdminNavigationManager: React.FC<AdminNavPanelProps> = ({
   adminUid,
@@ -314,7 +328,9 @@ export const AdminNavigationManager: React.FC<AdminNavPanelProps> = ({
                           ? 'library'
                           : nextType === 'page'
                             ? pages[0]?.slug || 'terms-of-service'
-                            : 'https://',
+                            : nextType === 'anchor'
+                              ? HOMEPAGE_SECTION_ANCHORS.steps
+                              : 'https://',
                     },
                   });
                 }}
@@ -322,6 +338,7 @@ export const AdminNavigationManager: React.FC<AdminNavPanelProps> = ({
               >
                 <option value="view">App View</option>
                 <option value="page">CMS / Legal Page</option>
+                <option value="anchor">Homepage Section</option>
                 <option value="url">External URL</option>
               </select>
             </div>
@@ -339,10 +356,13 @@ export const AdminNavigationManager: React.FC<AdminNavPanelProps> = ({
                   }
                   className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950"
                 >
+                  <option value="home">Public Homepage</option>
                   <option value="library">Library Inbox</option>
                   <option value="pricing">Pricing Plans</option>
                   <option value="checkout">Checkout Page</option>
                   <option value="user-dashboard">Account Dashboard</option>
+                  <option value="reminders">Reminders</option>
+                  <option value="admin">Admin Dashboard</option>
                 </select>
               ) : editingTarget.item.actionType === 'page' ? (
                 <select
@@ -366,6 +386,23 @@ export const AdminNavigationManager: React.FC<AdminNavPanelProps> = ({
                         {p.title} ({p.slug})
                       </option>
                     ))}
+                </select>
+              ) : editingTarget.item.actionType === 'anchor' ? (
+                <select
+                  value={editingTarget.item.target}
+                  onChange={(e) =>
+                    setEditingTarget({
+                      ...editingTarget,
+                      item: { ...editingTarget.item, target: e.target.value },
+                    })
+                  }
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950"
+                >
+                  {HOMEPAGE_ANCHOR_OPTIONS.map((anchor) => (
+                    <option key={anchor.value} value={anchor.value}>
+                      {anchor.label}
+                    </option>
+                  ))}
                 </select>
               ) : (
                 <input

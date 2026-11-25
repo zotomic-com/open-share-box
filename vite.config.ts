@@ -45,17 +45,25 @@ export default defineConfig(() => {
           ],
           share_target: {
             action: '/share-target',
-            method: 'GET',
+            method: 'POST',
+            enctype: 'multipart/form-data',
             params: {
               title: 'title',
               text: 'text',
               url: 'url',
+              files: [
+                {
+                  name: 'media',
+                  accept: ['image/*'],
+                },
+              ],
             },
           },
         },
         workbox: {
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+          importScripts: ['share-target-sw.js'],
           navigateFallback: '/index.html',
           navigateFallbackDenylist: [/^\/api\//, /^\/llms\.txt$/, /^\/\.well-known\//, /^\/robots\.txt$/, /^\/sitemap\.xml$/],
           runtimeCaching: [

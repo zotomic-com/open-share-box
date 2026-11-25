@@ -17,6 +17,8 @@ import type {
   AnalyzedVideo,
   CheckoutFieldConfig,
   FullUserRecord,
+  HomepageContent,
+  NavLinkActionType,
   NavLinkItem,
   PageBlock,
   PageType,
@@ -35,6 +37,12 @@ import type {
 } from '../types/video';
 import { db, handleFirestoreError, OperationType } from './firebase';
 import { authorizedFetch } from './apiClient';
+import {
+  DEFAULT_HOMEPAGE_CONTENT,
+  sanitizeHomepageContent,
+  sanitizeImageRef,
+} from './homepageDefaults';
+import { dataUrlToMime } from './imageUtils';
 import { toMillis } from './libraryStore';
 import { DEFAULT_SITE_PAGES, sanitizeHttpUrl } from './pageDefaults';
 import { generateSafeId } from './videoUtils';
@@ -110,6 +118,10 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   tagline: 'Video Timestamps, Summaries & Searchable Library',
   logoUrl: '',
   faviconUrl: '',
+  appleTouchIconUrl: '',
+  pwaIcon192Url: '',
+  pwaIcon512Url: '',
+  pwaMaskableIconUrl: '',
   metaTitle: 'ClipIndex — Video Timestamps, Summaries & Searchable Library',
   metaDescription:
     'Extract timestamped segments, AI summaries, transcripts, and searchable tags from shared YouTube, TikTok, Instagram, and Facebook videos.',
@@ -674,8 +686,8 @@ function mapNavLinkList(
   return raw.slice(0, maxLen).map((item, idx) => {
     const obj = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>;
     const rawType = String(obj.actionType || 'view');
-    const actionType =
-      rawType === 'page' || rawType === 'url' ? rawType : 'view';
+    const actionType: NavLinkActionType =
+      rawType === 'page' || rawType === 'url' || rawType === 'anchor' ? rawType : 'view';
     const rawTarget = String(obj.target || 'library').trim();
     const target = actionType === 'url' ? sanitizeHttpUrl(rawTarget) || 'https://' : rawTarget.slice(0, 200);
     return {
@@ -719,11 +731,15 @@ function mapSiteSettingsDoc(d: Record<string, unknown>): SiteSettings {
     id: 'site',
     siteName: String(d.siteName || DEFAULT_SITE_SETTINGS.siteName),
     tagline: String(d.tagline ?? DEFAULT_SITE_SETTINGS.tagline),
-    logoUrl: sanitizeHttpUrl(String(d.logoUrl || '')),
-    faviconUrl: sanitizeHttpUrl(String(d.faviconUrl || '')),
+    logoUrl: sanitizeImageRef(String(d.logoUrl || '')),
+    faviconUrl: sanitizeImageRef(String(d.faviconUrl || '')),
+    appleTouchIconUrl: sanitizeImageRef(String(d.appleTouchIconUrl || '')),
+    pwaIcon192Url: sanitizeImageRef(String(d.pwaIcon192Url || '')),
+    pwaIcon512Url: sanitizeImageRef(String(d.pwaIcon512Url || '')),
+    pwaMaskableIconUrl: sanitizeImageRef(String(d.pwaMaskableIconUrl || '')),
     metaTitle: String(d.metaTitle ?? DEFAULT_SITE_SETTINGS.metaTitle),
     metaDescription: String(d.metaDescription ?? DEFAULT_SITE_SETTINGS.metaDescription),
-    ogImageUrl: sanitizeHttpUrl(String(d.ogImageUrl || '')),
+    ogImageUrl: sanitizeImageRef(String(d.ogImageUrl || '')),
     canonicalUrl: sanitizeHttpUrl(String(d.canonicalUrl || '')),
     googleSiteVerification: extractGoogleVerificationToken(String(d.googleSiteVerification || '')),
     googleHtmlFileName: normalizeGoogleHtmlFilename(String(d.googleHtmlFileName || '')),
@@ -776,6 +792,10 @@ export interface SiteSettingsInput {
   tagline: string;
   logoUrl: string;
   faviconUrl: string;
+  appleTouchIconUrl?: string;
+  pwaIcon192Url?: string;
+  pwaIcon512Url?: string;
+  pwaMaskableIconUrl?: string;
   metaTitle: string;
   metaDescription: string;
   ogImageUrl: string;
@@ -805,18 +825,32 @@ export interface SiteSettingsInput {
 
 function sanitizeNavLinksForWrite(links: NavLinkItem[] | undefined, maxLen: number): NavLinkItem[] {
   if (!Array.isArray(links)) return [];
-  return links.slice(0, maxLen).map((item, idx) => ({
-    id: (item.id || `nav_${idx}`).replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 64),
-    label: (item.label || 'Link').trim().slice(0, 60),
-    actionType: item.actionType === 'page' || item.actionType === 'url' ? item.actionType : 'view',
-    target:
-      item.actionType === 'url'
-        ? sanitizeHttpUrl(item.target).slice(0, 400) || 'https://example.com'
-        : String(item.target || 'library').trim().slice(0, 200),
-    visible: Boolean(item.visible),
-    sortOrder: idx,
-    openInNewTab: Boolean(item.openInNewTab),
-  }));
+  const seen = new Set<string>();
+  const cleaned: NavLinkItem[] = [];
+  for (const item of links.slice(0, maxLen)) {
+    const entry: NavLinkItem = {
+      id: (item.id || `nav_${cleaned.length}`).replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 64),
+      label: (item.label || 'Link').trim().slice(0, 60),
+      actionType:
+        item.actionType === 'page' || item.actionType === 'url' || item.actionType === 'anchor'
+          ? item.actionType
+          : 'view',
+      target:
+        item.actionType === 'url'
+          ? sanitizeHttpUrl(item.target).slice(0, 400) || 'https://example.com'
+          : String(item.target || 'library').trim().slice(0, 200),
+      visible: Boolean(item.visible),
+      sortOrder: cleaned.length,
+      openInNewTab: Boolean(item.openInNewTab),
+    };
+    // Keep only the first entry per destination so the header/footer never
+    // render duplicate Library/Pricing items.
+    const key = `${entry.actionType}:${entry.target.toLowerCase().replace(/\/+$/, '')}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    cleaned.push(entry);
+  }
+  return cleaned;
 }
 
 function sanitizeCheckoutFieldsForWrite(fields: CheckoutFieldConfig[] | undefined): CheckoutFieldConfig[] {
@@ -853,11 +887,25 @@ export async function saveSiteSettingsAdmin(
       id: 'site',
       siteName: (input.siteName.trim() || 'ClipIndex').slice(0, 80),
       tagline: input.tagline.trim().slice(0, 160),
-      logoUrl: sanitizeHttpUrl(input.logoUrl).slice(0, 1000),
-      faviconUrl: sanitizeHttpUrl(input.faviconUrl).slice(0, 1000),
+      logoUrl: sanitizeImageRef(input.logoUrl).slice(0, 1000),
+      faviconUrl: sanitizeImageRef(input.faviconUrl).slice(0, 1000),
+      appleTouchIconUrl: sanitizeImageRef(
+        input.appleTouchIconUrl ?? currentMapped.appleTouchIconUrl
+      ).slice(0, 1000),
+      pwaIcon192Url: sanitizeImageRef(input.pwaIcon192Url ?? currentMapped.pwaIcon192Url).slice(
+        0,
+        1000
+      ),
+      pwaIcon512Url: sanitizeImageRef(input.pwaIcon512Url ?? currentMapped.pwaIcon512Url).slice(
+        0,
+        1000
+      ),
+      pwaMaskableIconUrl: sanitizeImageRef(
+        input.pwaMaskableIconUrl ?? currentMapped.pwaMaskableIconUrl
+      ).slice(0, 1000),
       metaTitle: input.metaTitle.trim().slice(0, 120),
       metaDescription: input.metaDescription.trim().slice(0, 320),
-      ogImageUrl: sanitizeHttpUrl(input.ogImageUrl).slice(0, 1000),
+      ogImageUrl: sanitizeImageRef(input.ogImageUrl).slice(0, 1000),
       canonicalUrl: sanitizeHttpUrl(input.canonicalUrl).slice(0, 500),
       googleSiteVerification: extractGoogleVerificationToken(input.googleSiteVerification),
       googleHtmlFileName: cleanFileName,
@@ -938,6 +986,10 @@ export async function updatePartialSiteSettingsAdmin(
       tagline: patch.tagline ?? current.tagline,
       logoUrl: patch.logoUrl ?? current.logoUrl,
       faviconUrl: patch.faviconUrl ?? current.faviconUrl,
+      appleTouchIconUrl: patch.appleTouchIconUrl ?? current.appleTouchIconUrl,
+      pwaIcon192Url: patch.pwaIcon192Url ?? current.pwaIcon192Url,
+      pwaIcon512Url: patch.pwaIcon512Url ?? current.pwaIcon512Url,
+      pwaMaskableIconUrl: patch.pwaMaskableIconUrl ?? current.pwaMaskableIconUrl,
       metaTitle: patch.metaTitle ?? current.metaTitle,
       metaDescription: patch.metaDescription ?? current.metaDescription,
       ogImageUrl: patch.ogImageUrl ?? current.ogImageUrl,
@@ -1189,3 +1241,137 @@ export async function deleteUserBadgeAdmin(badgeId: string): Promise<void> {
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// Homepage content (admin editable) + uploaded site media
+// ---------------------------------------------------------------------------
+
+const HOMEPAGE_DOC_PATH = 'homepage/content';
+const SITE_MEDIA_COLLECTION = 'siteMedia';
+const MAX_HOMEPAGE_JSON_BYTES = 480_000;
+const MAX_SITE_MEDIA_DATA_URL_BYTES = 900_000;
+
+export function subscribeHomepageContent(onData: (content: HomepageContent) => void): () => void {
+  return onSnapshot(
+    doc(db, 'homepage', 'content'),
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        onData(DEFAULT_HOMEPAGE_CONTENT);
+        return;
+      }
+      const raw = snapshot.data()?.content;
+      try {
+        onData(sanitizeHomepageContent(JSON.parse(String(raw || '{}'))));
+      } catch {
+        onData(DEFAULT_HOMEPAGE_CONTENT);
+      }
+    },
+    () => {
+      onData(DEFAULT_HOMEPAGE_CONTENT);
+    }
+  );
+}
+
+export async function saveHomepageContentAdmin(
+  adminUid: string,
+  content: HomepageContent
+): Promise<void> {
+  const clean = sanitizeHomepageContent(content);
+  const json = JSON.stringify(clean);
+  if (json.length > MAX_HOMEPAGE_JSON_BYTES) {
+    throw new Error(
+      'Homepage content is too large to save. Remove some images or shorten the text and try again.'
+    );
+  }
+
+  try {
+    const ref = doc(db, 'homepage', 'content');
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      await setDoc(ref, {
+        id: 'content',
+        content: json,
+        updatedBy: adminUid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await updateDoc(ref, {
+        content: json,
+        updatedBy: adminUid,
+        updatedAt: serverTimestamp(),
+      });
+    }
+    authorizedFetch('/api/site-settings/invalidate', { method: 'POST' }).catch(() => {});
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, HOMEPAGE_DOC_PATH);
+  }
+}
+
+export async function uploadSiteMediaDataUrl(
+  adminUid: string,
+  dataUrl: string,
+  mime?: string
+): Promise<{ id: string; src: string }> {
+  if (!dataUrl.startsWith('data:image/')) {
+    throw new Error('Only image files can be uploaded here.');
+  }
+  if (dataUrl.length > MAX_SITE_MEDIA_DATA_URL_BYTES) {
+    throw new Error('This image is too large. Please choose a smaller image.');
+  }
+
+  const id = generateSafeId('media');
+  const path = `${SITE_MEDIA_COLLECTION}/${id}`;
+  try {
+    await setDoc(doc(db, SITE_MEDIA_COLLECTION, id), {
+      id,
+      dataUrl,
+      mime: (mime || dataUrlToMime(dataUrl)).slice(0, 80),
+      updatedBy: adminUid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return { id, src: `media:${id}` };
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, path);
+  }
+}
+
+export async function deleteSiteMediaAdmin(mediaId: string): Promise<void> {
+  const cleanId = (mediaId || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 128);
+  if (!cleanId) return;
+  const path = `${SITE_MEDIA_COLLECTION}/${cleanId}`;
+  try {
+    await deleteDoc(doc(db, SITE_MEDIA_COLLECTION, cleanId));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, path);
+  }
+}
+
+/** Loads public uploaded images by id. Missing ids are omitted. */
+export async function fetchSiteMediaDataUrls(
+  ids: string[]
+): Promise<Record<string, string>> {
+  const unique = Array.from(
+    new Set(ids.map((id) => (id || '').replace(/[^a-zA-Z0-9_-]/g, '')).filter(Boolean))
+  ).slice(0, 60);
+
+  const entries = await Promise.all(
+    unique.map(async (id) => {
+      try {
+        const snap = await getDoc(doc(db, SITE_MEDIA_COLLECTION, id));
+        if (!snap.exists()) return null;
+        const dataUrl = String(snap.data()?.dataUrl || '');
+        return dataUrl.startsWith('data:image/') ? ([id, dataUrl] as const) : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  const out: Record<string, string> = {};
+  for (const entry of entries) {
+    if (entry) out[entry[0]] = entry[1];
+  }
+  return out;
+}

@@ -13,9 +13,11 @@ import {
   FileText,
   Globe,
   Image as ImageIcon,
+  LayoutTemplate,
   Loader2,
   Lock,
   Navigation,
+  Palette,
   Plus,
   Puzzle,
   Receipt,
@@ -83,7 +85,10 @@ import { subscribeFeatureModules } from '../lib/featureStore';
 import { apiUrl } from '../lib/apiClient';
 import { getEmbeddableVideoInfo, sanitizeHttpUrl } from '../lib/pageDefaults';
 import { generateSafeId, PLATFORM_LABELS } from '../lib/videoUtils';
+import { isMediaRef } from '../lib/homepageDefaults';
 import { AdminBillingPanel } from './AdminBillingPanel';
+import { AdminBrandingPanel } from './AdminBrandingPanel';
+import { AdminHomepagePanel } from './AdminHomepagePanel';
 import { AdminModulesPanel } from './AdminModulesPanel';
 import {
   AdminNavigationManager,
@@ -97,6 +102,8 @@ export type AdminTab =
   | 'billing'
   | 'notifications'
   | 'navigation'
+  | 'branding'
+  | 'homepage'
   | 'modules'
   | 'badges'
   | 'pricing'
@@ -223,6 +230,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     tagline: DEFAULT_SITE_SETTINGS.tagline,
     logoUrl: DEFAULT_SITE_SETTINGS.logoUrl,
     faviconUrl: DEFAULT_SITE_SETTINGS.faviconUrl,
+    appleTouchIconUrl: DEFAULT_SITE_SETTINGS.appleTouchIconUrl,
+    pwaIcon192Url: DEFAULT_SITE_SETTINGS.pwaIcon192Url,
+    pwaIcon512Url: DEFAULT_SITE_SETTINGS.pwaIcon512Url,
+    pwaMaskableIconUrl: DEFAULT_SITE_SETTINGS.pwaMaskableIconUrl,
     metaTitle: DEFAULT_SITE_SETTINGS.metaTitle,
     metaDescription: DEFAULT_SITE_SETTINGS.metaDescription,
     ogImageUrl: DEFAULT_SITE_SETTINGS.ogImageUrl,
@@ -269,6 +280,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         tagline: s.tagline,
         logoUrl: s.logoUrl,
         faviconUrl: s.faviconUrl,
+        appleTouchIconUrl: s.appleTouchIconUrl,
+        pwaIcon192Url: s.pwaIcon192Url,
+        pwaIcon512Url: s.pwaIcon512Url,
+        pwaMaskableIconUrl: s.pwaMaskableIconUrl,
         metaTitle: s.metaTitle,
         metaDescription: s.metaDescription,
         ogImageUrl: s.ogImageUrl,
@@ -551,10 +566,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       ['OpenGraph Image URL', siteSettingsForm.ogImageUrl],
       ['Canonical URL', siteSettingsForm.canonicalUrl],
     ] as const) {
-      if (val.trim() && !sanitizeHttpUrl(val)) {
+      if (val.trim() && !isMediaRef(val) && !sanitizeHttpUrl(val)) {
         setSettingsMessage({
           type: 'error',
-          text: `${label} must be a valid https:// or http:// URL.`,
+          text: `${label} must be a valid https:// or http:// URL (or an uploaded brand image).`,
         });
         return;
       }
@@ -710,6 +725,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </button>
         <button
           type="button"
+          onClick={() => setActiveTab('branding')}
+          className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
+            activeTab === 'branding'
+              ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+          }`}
+        >
+          <Palette className="w-3.5 h-3.5" aria-hidden="true" />
+          Branding &amp; Icons
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('homepage')}
+          className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
+            activeTab === 'homepage'
+              ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100'
+          }`}
+        >
+          <LayoutTemplate className="w-3.5 h-3.5" aria-hidden="true" />
+          Homepage
+        </button>
+        <button
+          type="button"
           onClick={() => setActiveTab('settings')}
           className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
             activeTab === 'settings'
@@ -734,6 +773,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           onViewInvoice={(inv) => setPreviewInvoice(inv)}
         />
       )}
+
+      {/* ONE-PLACE BRANDING ASSETS TAB */}
+      {activeTab === 'branding' && (
+        <AdminBrandingPanel adminUid={currentUser.uid} settings={fullSiteSettings} />
+      )}
+
+      {/* PUBLIC HOMEPAGE CONTENT TAB */}
+      {activeTab === 'homepage' && <AdminHomepagePanel adminUid={currentUser.uid} />}
 
       {/* SEPARATED ADMIN & USER NOTIFICATIONS TAB */}
       {activeTab === 'notifications' && (
@@ -2029,107 +2076,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* SITE, SEO, GOOGLE SEARCH CONSOLE & AI BRAIN SETTINGS TAB */}
       {activeTab === 'settings' && (
         <form onSubmit={(e) => void handleSaveSiteSettings(e)} className="space-y-6">
-          {/* 1. Brand Identity */}
-          <section className="border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 p-6 space-y-5">
-            <div className="flex items-center gap-2 pb-3 border-b border-slate-200 dark:border-slate-800">
-              <Globe className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              <div>
-                <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                  Brand Identity, Logo &amp; Favicon
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Customize your workspace name, header logo, and browser tab favicon across all pages.
-                </p>
+          {/* Branding assets now live in one dedicated tab */}
+          <section className="rounded-xl border border-blue-200 bg-blue-50/60 p-6 dark:border-blue-900/60 dark:bg-blue-950/20">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="flex items-start gap-2.5">
+                <Palette className="mt-0.5 h-5 w-5 text-blue-600 dark:text-blue-400" />
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    Brand identity moved to the Branding &amp; Icons tab
+                  </h2>
+                  <p className="mt-1 max-w-2xl text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                    Site name, tagline, header/footer logo, browser favicon, Apple touch icon, PWA
+                    app icons, and the social share image are now managed together in one place.
+                  </p>
+                  <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                    Current brand: <strong>{fullSiteSettings.siteName}</strong>
+                    {fullSiteSettings.tagline ? ` — ${fullSiteSettings.tagline}` : ''}
+                  </p>
+                </div>
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
-                  Site Name
-                </label>
-                <input
-                  type="text"
-                  maxLength={80}
-                  required
-                  value={siteSettingsForm.siteName}
-                  onChange={(e) =>
-                    setSiteSettingsForm({ ...siteSettingsForm, siteName: e.target.value })
-                  }
-                  placeholder="ClipIndex"
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
-                  Site Tagline
-                </label>
-                <input
-                  type="text"
-                  maxLength={160}
-                  value={siteSettingsForm.tagline}
-                  onChange={(e) =>
-                    setSiteSettingsForm({ ...siteSettingsForm, tagline: e.target.value })
-                  }
-                  placeholder="Video Timestamps, Summaries & Searchable Library"
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
-                  Logo Image URL (https://)
-                </label>
-                <input
-                  type="url"
-                  maxLength={1000}
-                  value={siteSettingsForm.logoUrl}
-                  onChange={(e) =>
-                    setSiteSettingsForm({ ...siteSettingsForm, logoUrl: e.target.value })
-                  }
-                  placeholder="https://yourdomain.com/logo.png"
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100"
-                />
-                {sanitizeHttpUrl(siteSettingsForm.logoUrl) && (
-                  <div className="flex items-center gap-2 pt-1">
-                    <img
-                      src={sanitizeHttpUrl(siteSettingsForm.logoUrl)}
-                      alt="Logo preview"
-                      referrerPolicy="no-referrer"
-                      className="h-7 max-w-[140px] object-contain rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-0.5"
-                    />
-                    <span className="text-[11px] text-slate-500">Header logo preview</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
-                  Favicon URL (https://)
-                </label>
-                <input
-                  type="url"
-                  maxLength={1000}
-                  value={siteSettingsForm.faviconUrl}
-                  onChange={(e) =>
-                    setSiteSettingsForm({ ...siteSettingsForm, faviconUrl: e.target.value })
-                  }
-                  placeholder="https://yourdomain.com/favicon.png"
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100"
-                />
-                {sanitizeHttpUrl(siteSettingsForm.faviconUrl) && (
-                  <div className="flex items-center gap-2 pt-1">
-                    <img
-                      src={sanitizeHttpUrl(siteSettingsForm.faviconUrl)}
-                      alt="Favicon preview"
-                      referrerPolicy="no-referrer"
-                      className="w-5 h-5 object-contain rounded border border-slate-200 dark:border-slate-800"
-                    />
-                    <span className="text-[11px] text-slate-500">Browser tab icon preview</span>
-                  </div>
-                )}
-              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('branding')}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-medium text-white hover:bg-blue-700"
+              >
+                <Palette className="h-3.5 w-3.5" aria-hidden="true" />
+                Open Branding &amp; Icons
+              </button>
             </div>
           </section>
 

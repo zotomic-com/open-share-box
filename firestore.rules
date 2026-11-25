@@ -218,6 +218,7 @@ service cloud.firestore {
         && data.keys().hasAll(['id', 'siteName', 'aiDefaultDepth', 'updatedBy', 'createdAt', 'updatedAt'])
         && data.keys().hasOnly([
           'id', 'siteName', 'tagline', 'logoUrl', 'faviconUrl',
+          'appleTouchIconUrl', 'pwaIcon192Url', 'pwaIcon512Url', 'pwaMaskableIconUrl',
           'metaTitle', 'metaDescription', 'ogImageUrl', 'canonicalUrl',
           'googleSiteVerification', 'googleHtmlFileName', 'googleHtmlFileContent',
           'aiDefaultDepth', 'aiDefaultLanguage', 'aiCustomInstruction',
@@ -235,6 +236,10 @@ service cloud.firestore {
         && (!('tagline' in data) || (data.tagline is string && data.tagline.size() <= 160))
         && (!('logoUrl' in data) || (data.logoUrl is string && data.logoUrl.size() <= 1000))
         && (!('faviconUrl' in data) || (data.faviconUrl is string && data.faviconUrl.size() <= 1000))
+        && (!('appleTouchIconUrl' in data) || (data.appleTouchIconUrl is string && data.appleTouchIconUrl.size() <= 1000))
+        && (!('pwaIcon192Url' in data) || (data.pwaIcon192Url is string && data.pwaIcon192Url.size() <= 1000))
+        && (!('pwaIcon512Url' in data) || (data.pwaIcon512Url is string && data.pwaIcon512Url.size() <= 1000))
+        && (!('pwaMaskableIconUrl' in data) || (data.pwaMaskableIconUrl is string && data.pwaMaskableIconUrl.size() <= 1000))
         && (!('metaTitle' in data) || (data.metaTitle is string && data.metaTitle.size() <= 120))
         && (!('metaDescription' in data) || (data.metaDescription is string && data.metaDescription.size() <= 320))
         && (!('ogImageUrl' in data) || (data.ogImageUrl is string && data.ogImageUrl.size() <= 1000))
@@ -269,6 +274,36 @@ service cloud.firestore {
         && (!('checkoutTaxPercent' in data) || ((data.checkoutTaxPercent is int || data.checkoutTaxPercent is float) && data.checkoutTaxPercent >= 0 && data.checkoutTaxPercent <= 100))
         && (!('checkoutNotice' in data) || (data.checkoutNotice is string && data.checkoutNotice.size() <= 1000))
         && (!('checkoutCustomFields' in data) || isValidMapList(data.checkoutCustomFields, 15))
+        && isValidId(data.updatedBy)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSiteMedia(data, mediaId) {
+      return data.keys().hasAll(['id', 'dataUrl', 'mime', 'updatedBy', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'dataUrl', 'mime', 'updatedBy', 'createdAt', 'updatedAt'])
+        && isValidId(data.id)
+        && data.id == mediaId
+        && data.dataUrl is string
+        && data.dataUrl.size() >= 24
+        && data.dataUrl.size() <= 950000
+        && data.dataUrl.matches('^data:image/[a-zA-Z0-9.+-]+;base64,')
+        && data.mime is string
+        && data.mime.size() >= 3
+        && data.mime.size() <= 80
+        && data.mime.matches('^image/')
+        && isValidId(data.updatedBy)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidHomepageContent(data, contentId) {
+      return contentId == 'content'
+        && data.keys().hasAll(['id', 'content', 'updatedBy', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'content', 'updatedBy', 'createdAt', 'updatedAt'])
+        && data.id == 'content'
+        && data.content is string
+        && data.content.size() <= 500000
         && isValidId(data.updatedBy)
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
@@ -654,6 +689,42 @@ service cloud.firestore {
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time;
       allow delete: if settingId == 'site' && isAdmin();
+    }
+
+    // --- /homepage/{contentId} (Admin-Edited Public Homepage Content) ---
+    match /homepage/{contentId} {
+      allow get: if contentId == 'content';
+      allow list: if false;
+      allow create: if contentId == 'content'
+        && isAdmin()
+        && isValidHomepageContent(incoming(), contentId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if contentId == 'content'
+        && isAdmin()
+        && isValidHomepageContent(incoming(), contentId)
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if contentId == 'content' && isAdmin();
+    }
+
+    // --- /siteMedia/{mediaId} (Admin-Uploaded Brand & Homepage Images) ---
+    match /siteMedia/{mediaId} {
+      allow get: if isValidId(mediaId);
+      allow list: if false;
+      allow create: if isValidId(mediaId)
+        && isAdmin()
+        && isValidSiteMedia(incoming(), mediaId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(mediaId)
+        && isAdmin()
+        && isValidSiteMedia(incoming(), mediaId)
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(mediaId) && isAdmin();
     }
 
     // --- /featureModules/{moduleId} (Admin-Managed Feature & Connector Controls) ---

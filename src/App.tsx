@@ -13,6 +13,7 @@ import {
   FolderPlus,
   Globe,
   HardDrive,
+  Home,
   Image as ImageIcon,
   Layers,
   LayoutDashboard,
@@ -36,6 +37,7 @@ import type {
   BillingInvoice,
   ExtractedLink,
   FeatureModuleConfig,
+  HomepageContent,
   InboxItemType,
   InvoiceBillingCycle,
   NavLinkItem,
@@ -87,6 +89,8 @@ import {
 import {
   checkUserIsAdmin,
   DEFAULT_SITE_SETTINGS,
+  fetchSiteMediaDataUrls,
+  subscribeHomepageContent,
   subscribePricingPlans,
   subscribePublishedPages,
   subscribeSiteSettings,
@@ -118,20 +122,28 @@ import {
 } from './lib/featureStore';
 import { DEFAULT_SITE_PAGES, sanitizeHttpUrl } from './lib/pageDefaults';
 import {
+  collectHomepageMediaIds,
+  DEFAULT_HOMEPAGE_CONTENT,
+  mediaIdFromRef,
+} from './lib/homepageDefaults';
+import {
   extractUrlFromShareParams,
   generateSafeId,
   getItemType,
   PLATFORM_LABELS,
   SAVE_REASON_PRESETS,
 } from './lib/videoUtils';
+import { consumeSharedTarget } from './lib/sharedTarget';
 import { AdminDashboard, type AdminTab } from './components/AdminDashboard';
 import { AuthModal } from './components/AuthModal';
 import { CheckoutPage } from './components/CheckoutPage';
+import { HomePage } from './components/HomePage';
 import { InvoiceModal } from './components/InvoiceModal';
 import { NotificationBellPanel } from './components/NotificationBellPanel';
 import { OfflineIndicator, PWAInstallBar } from './components/PWAControls';
 import { PricingPlans } from './components/PricingPlans';
 import { RemindersPanel } from './components/RemindersPanel';
+import { ScrollToTop } from './components/ScrollToTop';
 import { ShareSetupModal } from './components/ShareSetupModal';
 import { SitePageView } from './components/SitePageView';
 import { UserDashboard } from './components/UserDashboard';
@@ -145,6 +157,7 @@ type SidebarFilter =
   | { type: 'collection'; collectionId: string };
 
 type ActiveView =
+  | 'home'
   | 'library'
   | 'reminders'
   | 'user-dashboard'
@@ -199,6 +212,10 @@ export default function App() {
   const [allAdminNotifications, setAllAdminNotifications] = useState<SiteNotification[]>([]);
   const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(() => new Set());
   const [siteSettings, setSiteSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS);
+  const [homepageContent, setHomepageContent] = useState<HomepageContent>(DEFAULT_HOMEPAGE_CONTENT);
+  const [siteMediaUrls, setSiteMediaUrls] = useState<Record<string, string>>({});
+  const [pendingHomeAnchor, setPendingHomeAnchor] = useState<string | null>(null);
+  const initialRedirectUidRef = useRef<string | null>(null);
   const [featureModules, setFeatureModules] = useState<FeatureModuleConfig[]>(
     DEFAULT_FEATURE_MODULES
   );
@@ -213,7 +230,7 @@ export default function App() {
     totalBytes: 0,
   });
 
-  const [activeView, setActiveView] = useState<ActiveView>('library');
+  const [activeView, setActiveView] = useState<ActiveView>('home');
   const [activePageSlug, setActivePageSlug] = useState<string>('terms-of-service');
   const [adminInitialEditPage, setAdminInitialEditPage] = useState<SitePage | null>(null);
   const [adminInitialTab, setAdminInitialTab] = useState<AdminTab | undefined>(undefined);
@@ -285,6 +302,17 @@ export default function App() {
     return unsub;
   }, []);
 
+  // Signed-in members land in their library once per sign-in; after that the
+  // Home icon can open the public homepage for everyone.
+  useEffect(() => {
+    if (!authReady || !user) return;
+    if (initialRedirectUidRef.current === user.uid) return;
+    initialRedirectUidRef.current = user.uid;
+    if (activeView === 'home') {
+      setActiveView('library');
+    }
+  }, [authReady, user, activeView]);
+
   // Admin role check
   useEffect(() => {
     let active = true;
@@ -324,6 +352,84 @@ export default function App() {
       unsubModules();
     };
   }, []);
+
+  // Public homepage content (admin editable)
+  useEffect(() => {
+    const unsub = subscribeHomepageContent((next) => setHomepageContent(next));
+    return unsub;
+  }, []);
+
+  // Resolve admin-uploaded `media:<id>` images used by the homepage and brand assets
+  const homepageMediaKey = useMemo(() => {
+    const ids = new Set<string>(collectHomepageMediaIds(homepageContent));
+    for (const src of [
+      siteSettings.logoUrl,
+      siteSettings.faviconUrl,
+      siteSettings.appleTouchIconUrl,
+      siteSettings.pwaIcon192Url,
+      siteSettings.pwaIcon512Url,
+      siteSettings.pwaMaskableIconUrl,
+      siteSettings.ogImageUrl,
+    ]) {
+      const id = mediaIdFromRef(src);
+      if (id) ids.add(id);
+    }
+    return Array.from(ids).sort().join(',');
+  }, [homepageContent, siteSettings]);
+
+  useEffect(() => {
+    if (!homepageMediaKey) return;
+    let active = true;
+    const ids = homepageMediaKey.split(',').filter(Boolean);
+    void fetchSiteMediaDataUrls(ids)
+      .then((map) => {
+        if (!active) return;
+        setSiteMediaUrls((prev) => ({ ...prev, ...map }));
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [homepageMediaKey]);
+
+  const resolveMediaSrc = useCallback(
+    (src: string): string => {
+      if (!src) return '';
+      const mediaId = mediaIdFromRef(src);
+      if (!mediaId) return src;
+      return siteMediaUrls[mediaId] || '';
+    },
+    [siteMediaUrls]
+  );
+
+  const headerLogoUrl = useMemo(
+    () => resolveMediaSrc(siteSettings.logoUrl),
+    [resolveMediaSrc, siteSettings.logoUrl]
+  );
+
+  useEffect(() => {
+    setLogoLoadError(false);
+  }, [headerLogoUrl]);
+
+  const openLibrary = useCallback(() => {
+    setAnalyzeError(null);
+    setIsIncomingShare(false);
+    setSidebarFilter({ type: 'all' });
+    setSelectedVideoId(null);
+    setActiveView('library');
+  }, []);
+
+  // Scroll to a homepage anchor after navigating from another app view
+  useEffect(() => {
+    if (activeView !== 'home' || !pendingHomeAnchor) return;
+    const anchor = pendingHomeAnchor;
+    const timer = window.setTimeout(() => {
+      document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setPendingHomeAnchor(null);
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [activeView, pendingHomeAnchor]);
+
 
   const textPdfEnabled = isFeatureModuleEnabled(featureModules, 'text-pdf');
   const bookmarkShareEnabled = isFeatureModuleEnabled(featureModules, 'bookmark-share');
@@ -391,16 +497,20 @@ export default function App() {
     upsertMeta('name', 'apple-mobile-web-app-title', siteSettings.siteName);
     upsertMeta('name', 'google-site-verification', siteSettings.googleSiteVerification);
 
-    const safeOgImg = sanitizeHttpUrl(siteSettings.ogImageUrl);
+    const safeOgImg =
+      resolveMediaSrc(siteSettings.ogImageUrl) || sanitizeHttpUrl(siteSettings.ogImageUrl);
     upsertMeta('property', 'og:image', safeOgImg);
     upsertMeta('name', 'twitter:image', safeOgImg);
 
     const safeCanonical = sanitizeHttpUrl(siteSettings.canonicalUrl) || window.location.origin;
     upsertLink('canonical', safeCanonical);
 
-    const safeFavicon = sanitizeHttpUrl(siteSettings.faviconUrl);
+    const safeFavicon =
+      resolveMediaSrc(siteSettings.faviconUrl) || sanitizeHttpUrl(siteSettings.faviconUrl);
+    const safeAppleTouch =
+      resolveMediaSrc(siteSettings.appleTouchIconUrl) || safeFavicon;
     upsertLink('icon', safeFavicon || '/icon.svg');
-    upsertLink('apple-touch-icon', safeFavicon || '/apple-touch-icon.png');
+    upsertLink('apple-touch-icon', safeAppleTouch || '/apple-touch-icon.png');
 
     let ldScript = document.head.querySelector<HTMLScriptElement>('#clipindex-jsonld');
     if (!ldScript) {
@@ -418,7 +528,7 @@ export default function App() {
       applicationCategory: 'MultimediaApplication',
       operatingSystem: 'Any',
     });
-  }, [siteSettings]);
+  }, [siteSettings, resolveMediaSrc]);
 
   // Firestore real-time subscriptions when signed in and verified; localStorage when guest
   useEffect(() => {
@@ -594,8 +704,25 @@ export default function App() {
       openPageBySlug(link.target);
       return;
     }
+    if (link.actionType === 'anchor') {
+      const anchor = link.target.trim();
+      if (!anchor) return;
+      if (activeView === 'home') {
+        document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        setPendingHomeAnchor(anchor);
+        setActiveView('home');
+      }
+      setSelectedVideoId(null);
+      setMobileMenuOpen(false);
+      return;
+    }
     if (link.actionType === 'view') {
-      if (link.target === 'pricing') {
+      if (link.target === 'home') {
+        setActiveView('home');
+        setSelectedVideoId(null);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else if (link.target === 'pricing') {
         if (!siteSettings.pricingEnabled) return;
         setActiveView('pricing');
         setSelectedVideoId(null);
@@ -1405,12 +1532,53 @@ export default function App() {
     saveGuestWhatsAppConfig(nextConfig);
   };
 
-  // Handle Web Share Target intake (?url=...&text=...&title=... or /share-target)
-  // Opens pre-filled modal so user can add "Why I saved this" quick tag & note
+  // Handle Web Share Target intake (files via /share-target?shared=... or links via ?url=...&text=...)
+  // Opens the pre-filled save modal so the user can add "Why I saved this" and tags.
   useEffect(() => {
     if (!authReady) return;
     const params = new URLSearchParams(window.location.search);
     const isShareRoute = window.location.pathname === '/share-target';
+    const sharedId = params.get('shared');
+    const shareError = params.get('share-error');
+
+    if (sharedId) {
+      window.history.replaceState({}, document.title, '/');
+      setAnalyzeError(null);
+      setIsSubmitOpen(false);
+      setActiveView('library');
+      void (async () => {
+        const shared = await consumeSharedTarget(sharedId);
+        if (!shared) {
+          setAnalyzeError('We could not read the shared item. Please try sharing it again.');
+          return;
+        }
+        setIsIncomingShare(true);
+        if (shared.file) {
+          setSubmitInitialMode('screenshot');
+          setSubmitInitialFile(shared.file);
+          setSubmitInitialUrl(shared.url);
+          setSubmitInitialTitle(shared.title || shared.file.name);
+          setIsSubmitOpen(true);
+          return;
+        }
+        const incomingValue = shared.url || shared.text;
+        if (incomingValue) {
+          setSubmitInitialMode('link');
+          setSubmitInitialUrl(incomingValue);
+          setSubmitInitialTitle(shared.title);
+          setIsSubmitOpen(true);
+        }
+      })();
+      return;
+    }
+
+    if (shareError) {
+      window.history.replaceState({}, document.title, '/');
+      setActiveView('library');
+      setAnalyzeError('We could not read the shared item. Please try sharing it again.');
+      return;
+    }
+
     if (isShareRoute || params.has('url') || params.has('text')) {
       const { url, title, text } = extractUrlFromShareParams(params);
       window.history.replaceState({}, document.title, '/');
@@ -1431,7 +1599,7 @@ export default function App() {
     try {
       await signOut(auth);
       setSelectedVideoId(null);
-      setActiveView('library');
+      setActiveView('home');
     } catch (err) {
       console.error('Sign out failed:', err);
     }
@@ -2170,6 +2338,52 @@ export default function App() {
     </div>
   );
 
+  const authModalNode = (
+    <AuthModal
+      isOpen={isAuthModalOpen}
+      onClose={() => setIsAuthModalOpen(false)}
+      currentUser={user}
+      socialLoginEnabled={siteSettings.socialLoginEnabled}
+      googleLoginEnabled={siteSettings.googleLoginEnabled}
+      facebookLoginEnabled={siteSettings.facebookLoginEnabled}
+      facebookAppId={siteSettings.facebookAppId}
+      onOpenLegalPage={openPageBySlug}
+      onUserVerified={() => {
+        if (auth.currentUser) {
+          void ensureUserProfile(auth.currentUser);
+          void checkUserIsAdmin(auth.currentUser).then(setIsAdmin);
+        }
+      }}
+    />
+  );
+
+  if (activeView === 'home') {
+    return (
+      <>
+        <HomePage
+          content={homepageContent}
+          settings={siteSettings}
+          isDark={isDark}
+          isSignedIn={Boolean(user)}
+          resolveImage={resolveMediaSrc}
+          onToggleTheme={() => setIsDark((dark) => !dark)}
+          onStart={openLibrary}
+          onSignIn={() => setIsAuthModalOpen(true)}
+          onOpenPage={openPageBySlug}
+          onOpenLibrary={openLibrary}
+          onHome={() => {
+            setActiveView('home');
+            setSelectedVideoId(null);
+          }}
+          onNavLink={handleNavLinkClick}
+        />
+        <ScrollToTop />
+        {authModalNode}
+        <OfflineIndicator />
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
       <a
@@ -2199,9 +2413,9 @@ export default function App() {
             }}
             className="inline-flex items-center gap-2.5 text-base font-bold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0"
           >
-            {sanitizeHttpUrl(siteSettings.logoUrl) && !logoLoadError ? (
+            {headerLogoUrl && !logoLoadError ? (
               <img
-                src={sanitizeHttpUrl(siteSettings.logoUrl)}
+                src={headerLogoUrl}
                 alt={siteSettings.siteName}
                 referrerPolicy="no-referrer"
                 onError={() => setLogoLoadError(true)}
@@ -2313,6 +2527,22 @@ export default function App() {
 
           <button
             type="button"
+            onClick={() => {
+              setActiveView('home');
+              setSelectedVideoId(null);
+              setSidebarFilter({ type: 'all' });
+              setMobileMenuOpen(false);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            aria-label="Open homepage"
+            title="Homepage"
+            className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+          >
+            <Home className="w-4 h-4" aria-hidden="true" />
+          </button>
+
+          <button
+            type="button"
             onClick={() => setIsDark((d) => !d)}
             aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
             className="p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
@@ -2369,9 +2599,9 @@ export default function App() {
             >
               <div className="flex items-center justify-between px-4 h-14 border-b border-slate-200 dark:border-slate-800">
                 <span className="inline-flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-100 truncate">
-                  {sanitizeHttpUrl(siteSettings.logoUrl) && !logoLoadError ? (
+                  {headerLogoUrl && !logoLoadError ? (
                     <img
-                      src={sanitizeHttpUrl(siteSettings.logoUrl)}
+                      src={headerLogoUrl}
                       alt={siteSettings.siteName}
                       referrerPolicy="no-referrer"
                       className="h-6 max-w-[110px] object-contain shrink-0"
@@ -2379,14 +2609,30 @@ export default function App() {
                   ) : null}
                   <span className="truncate">{siteSettings.siteName}</span>
                 </span>
-                <button
-                  type="button"
-                  aria-label="Close navigation menu"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
-                >
-                  <X className="w-4 h-4" aria-hidden="true" />
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    aria-label="Open homepage"
+                    title="Homepage"
+                    onClick={() => {
+                      setActiveView('home');
+                      setSelectedVideoId(null);
+                      setMobileMenuOpen(false);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                  >
+                    <Home className="w-4 h-4" aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Close navigation menu"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
+                  >
+                    <X className="w-4 h-4" aria-hidden="true" />
+                  </button>
+                </div>
               </div>
               <div className="flex-1 overflow-y-auto">{sidebarContent}</div>
             </aside>
@@ -2541,7 +2787,7 @@ export default function App() {
             ) : activeView === 'page' ? (
               <SitePageView
                 page={activeSitePage}
-                onBack={() => setActiveView('library')}
+                onBack={() => setActiveView(user ? 'library' : 'home')}
                 isAdmin={isAdmin}
                 onEditPage={(page) => {
                   setAdminInitialEditPage(page);
@@ -2926,22 +3172,7 @@ export default function App() {
         }}
       />
 
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        currentUser={user}
-        socialLoginEnabled={siteSettings.socialLoginEnabled}
-        googleLoginEnabled={siteSettings.googleLoginEnabled}
-        facebookLoginEnabled={siteSettings.facebookLoginEnabled}
-        facebookAppId={siteSettings.facebookAppId}
-        onOpenLegalPage={openPageBySlug}
-        onUserVerified={() => {
-          if (auth.currentUser) {
-            void ensureUserProfile(auth.currentUser);
-            void checkUserIsAdmin(auth.currentUser).then(setIsAdmin);
-          }
-        }}
-      />
+      {authModalNode}
 
       <InvoiceModal
         invoice={activeInvoiceModal}
@@ -2950,6 +3181,7 @@ export default function App() {
       />
 
       <OfflineIndicator />
+      <ScrollToTop className="z-50" />
     </div>
   );
 }

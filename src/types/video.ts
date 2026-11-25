@@ -221,7 +221,7 @@ export interface AiBrainSettings {
   customInstruction: string;
 }
 
-export type NavLinkActionType = 'view' | 'page' | 'url';
+export type NavLinkActionType = 'view' | 'page' | 'url' | 'anchor';
 
 export interface NavLinkItem {
   id: string;
@@ -241,12 +241,92 @@ export interface CheckoutFieldConfig {
   visible: boolean;
 }
 
+export type HomepageIconKey =
+  | 'video'
+  | 'image'
+  | 'link'
+  | 'document'
+  | 'bot'
+  | 'bookmark'
+  | 'brain'
+  | 'share'
+  | 'sparkles'
+  | 'search'
+  | 'shield'
+  | 'lock'
+  | 'cloud'
+  | 'harddrive'
+  | 'globe'
+  | 'clock'
+  | 'layers'
+  | 'check'
+  | 'play'
+  | 'arrow';
+
+/** Image source can be a public https URL, an empty string, or a `media:<id>` reference. */
+export interface HomepageImage {
+  src: string;
+  alt: string;
+}
+
+export interface HomepageItem {
+  id: string;
+  title: string;
+  description: string;
+  label: string;
+  icon: HomepageIconKey;
+  image: HomepageImage;
+  tags: string[];
+}
+
+export type HomepageSectionKind =
+  | 'hero'
+  | 'problem'
+  | 'steps'
+  | 'content-types'
+  | 'transformation'
+  | 'search-demo'
+  | 'product-flow'
+  | 'features'
+  | 'privacy'
+  | 'cta';
+
+export interface HomepageSection {
+  id: HomepageSectionKind;
+  kind: HomepageSectionKind;
+  enabled: boolean;
+  badge: string;
+  eyebrow: string;
+  title: string;
+  accent: string;
+  description: string;
+  note: string;
+  ctaLabel: string;
+  ctaSecondaryLabel: string;
+  secondaryTitle: string;
+  secondaryText: string;
+  beforeLabel?: string;
+  afterLabel?: string;
+  tags: string[];
+  image: HomepageImage;
+  items: HomepageItem[];
+}
+
+export interface HomepageContent {
+  version: number;
+  sections: HomepageSection[];
+}
+
 export interface SiteSettings {
   id: 'site';
   siteName: string;
   tagline: string;
   logoUrl: string;
   faviconUrl: string;
+  appleTouchIconUrl: string;
+  pwaIcon192Url: string;
+  pwaIcon512Url: string;
+  pwaMaskableIconUrl: string;
   metaTitle: string;
   metaDescription: string;
   ogImageUrl: string;

@@ -74,6 +74,10 @@ export interface ServerSiteSettings {
   metaTitle: string;
   metaDescription: string;
   faviconUrl: string;
+  appleTouchIconUrl: string;
+  pwaIcon192Url: string;
+  pwaIcon512Url: string;
+  pwaMaskableIconUrl: string;
   ogImageUrl: string;
   canonicalUrl: string;
   googleSiteVerification: string;
@@ -87,6 +91,10 @@ const DEFAULT_SERVER_SITE_SETTINGS: ServerSiteSettings = {
   metaDescription:
     'Extract timestamped segments, AI summaries, transcripts, links, and searchable tags from shared videos, screenshots, and web pages.',
   faviconUrl: '',
+  appleTouchIconUrl: '',
+  pwaIcon192Url: '',
+  pwaIcon512Url: '',
+  pwaMaskableIconUrl: '',
   ogImageUrl: '',
   canonicalUrl: '',
   googleSiteVerification: '',
@@ -111,6 +119,97 @@ function sanitizeServerHttpUrl(raw: string): string {
     return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.toString() : '';
   } catch {
     return '';
+  }
+}
+
+/** Allows public https URLs and admin-uploaded `media:<id>` references. */
+function sanitizeServerImageRef(raw: string): string {
+  const trimmed = (raw || '').trim();
+  if (!trimmed) return '';
+  if (trimmed.startsWith('media:')) {
+    const id = trimmed.slice('media:'.length).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 128);
+    return id ? `media:${id}` : '';
+  }
+  return sanitizeServerHttpUrl(trimmed);
+}
+
+/** Converts a stored image reference into a browser-fetchable absolute URL. */
+export function resolveServerImageRef(raw: string, requestOrigin: string): string {
+  const value = sanitizeServerImageRef(raw);
+  if (!value) return '';
+  if (value.startsWith('media:')) {
+    const origin = sanitizeServerHttpUrl(requestOrigin).replace(/\/+$/, '');
+    return origin ? `${origin}/api/site-media/${value.slice('media:'.length)}` : '';
+  }
+  return value;
+}
+
+const SITE_MEDIA_MIME_ALLOWLIST = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'image/gif',
+  'image/svg+xml',
+  'image/avif',
+  'image/x-icon',
+  'image/vnd.microsoft.icon',
+]);
+
+const MAX_SITE_MEDIA_BASE64_CHARS = 1_000_000;
+const siteMediaCache = new Map<string, { mime: string; base64: string; expiresAt: number }>();
+const SITE_MEDIA_CACHE_TTL_MS = 5 * 60 * 1000;
+const SITE_MEDIA_CACHE_LIMIT = 80;
+
+/**
+ * Reads an admin-uploaded image from `siteMedia/{id}` via the Firestore REST API
+ * and returns the decoded MIME type + base64 payload for `/api/site-media/:id`.
+ */
+async function readSiteMediaData(
+  id: string
+): Promise<{ mime: string; base64: string } | null> {
+  const cleanId = (id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 128);
+  if (!cleanId) return null;
+
+  const now = Date.now();
+  const cached = siteMediaCache.get(cleanId);
+  if (cached && cached.expiresAt > now) {
+    return { mime: cached.mime, base64: cached.base64 };
+  }
+
+  const cfg = getFirebaseAppletConfig();
+  if (!cfg.projectId || !cfg.firestoreDatabaseId) return null;
+
+  try {
+    const endpoint = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(
+      cfg.projectId
+    )}/databases/${encodeURIComponent(cfg.firestoreDatabaseId)}/documents/siteMedia/${encodeURIComponent(
+      cleanId
+    )}`;
+    const res = await fetchWithTimeout(endpoint, 3000);
+    if (!res.ok) return null;
+    const docJson = (await res.json()) as {
+      fields?: Record<string, { stringValue?: string } | undefined>;
+    };
+    const dataUrl = readFirestoreStringField(docJson.fields, 'dataUrl').trim();
+    const storedMime = readFirestoreStringField(docJson.fields, 'mime').trim().toLowerCase();
+    const match = /^data:([a-zA-Z0-9.+/;-]+);base64,([A-Za-z0-9+/=\s]+)$/.exec(dataUrl);
+    if (!match) return null;
+
+    const mime = (match[1] || storedMime).toLowerCase().split(';')[0];
+    if (!SITE_MEDIA_MIME_ALLOWLIST.has(mime)) return null;
+
+    const base64 = match[2].replace(/\s+/g, '');
+    if (!base64 || base64.length > MAX_SITE_MEDIA_BASE64_CHARS) return null;
+
+    if (siteMediaCache.size >= SITE_MEDIA_CACHE_LIMIT) {
+      const oldestKey = siteMediaCache.keys().next().value;
+      if (oldestKey) siteMediaCache.delete(oldestKey);
+    }
+    siteMediaCache.set(cleanId, { mime, base64, expiresAt: now + SITE_MEDIA_CACHE_TTL_MS });
+    return { mime, base64 };
+  } catch {
+    return null;
   }
 }
 
@@ -144,8 +243,14 @@ export async function getPublicSiteSettings(): Promise<ServerSiteSettings> {
       metaTitle: readFirestoreStringField(f, 'metaTitle') || `${siteName} — Video Timestamps & Summaries`,
       metaDescription:
         readFirestoreStringField(f, 'metaDescription') || DEFAULT_SERVER_SITE_SETTINGS.metaDescription,
-      faviconUrl: sanitizeServerHttpUrl(readFirestoreStringField(f, 'faviconUrl')),
-      ogImageUrl: sanitizeServerHttpUrl(readFirestoreStringField(f, 'ogImageUrl')),
+      faviconUrl: sanitizeServerImageRef(readFirestoreStringField(f, 'faviconUrl')),
+      appleTouchIconUrl: sanitizeServerImageRef(readFirestoreStringField(f, 'appleTouchIconUrl')),
+      pwaIcon192Url: sanitizeServerImageRef(readFirestoreStringField(f, 'pwaIcon192Url')),
+      pwaIcon512Url: sanitizeServerImageRef(readFirestoreStringField(f, 'pwaIcon512Url')),
+      pwaMaskableIconUrl: sanitizeServerImageRef(
+        readFirestoreStringField(f, 'pwaMaskableIconUrl')
+      ),
+      ogImageUrl: sanitizeServerImageRef(readFirestoreStringField(f, 'ogImageUrl')),
       canonicalUrl: sanitizeServerHttpUrl(readFirestoreStringField(f, 'canonicalUrl')),
       googleSiteVerification: readFirestoreStringField(f, 'googleSiteVerification').replace(
         /[^a-zA-Z0-9_-]/g,
@@ -297,6 +402,16 @@ export function injectSiteMetaIntoHtml(
 
   const extraTags: string[] = [`<meta property="og:site_name" content="${safeSiteName}" />`];
 
+  const injectLinkTag = (rel: string, href: string) => {
+    const tag = `<link rel="${rel}" href="${escapeHtmlAttr(href)}" />`;
+    const pattern = new RegExp(`<link\\s+rel=["']${rel}["'][^>]*>`, 'i');
+    if (pattern.test(updated)) {
+      updated = updated.replace(pattern, tag);
+    } else {
+      extraTags.push(tag);
+    }
+  };
+
   if (settings.googleSiteVerification) {
     extraTags.push(
       `<meta name="google-site-verification" content="${escapeHtmlAttr(
@@ -304,8 +419,9 @@ export function injectSiteMetaIntoHtml(
       )}" />`
     );
   }
-  if (settings.ogImageUrl) {
-    const safeOgImg = escapeHtmlAttr(settings.ogImageUrl);
+  const resolvedOgImage = resolveServerImageRef(settings.ogImageUrl, requestOrigin);
+  if (resolvedOgImage) {
+    const safeOgImg = escapeHtmlAttr(resolvedOgImage);
     extraTags.push(`<meta property="og:image" content="${safeOgImg}" />`);
     extraTags.push(`<meta name="twitter:image" content="${safeOgImg}" />`);
   }
@@ -313,17 +429,17 @@ export function injectSiteMetaIntoHtml(
   if (canonicalBase) {
     extraTags.push(`<link rel="canonical" href="${escapeHtmlAttr(canonicalBase)}" />`);
   }
-  if (settings.faviconUrl) {
-    const safeFav = escapeHtmlAttr(settings.faviconUrl);
-    updated = updated.replace(
-      /<link\s+rel=["']icon["'][^>]*>/i,
-      `<link rel="icon" href="${safeFav}" />`
-    );
-    updated = updated.replace(
-      /<link\s+rel=["']apple-touch-icon["'][^>]*>/i,
-      `<link rel="apple-touch-icon" href="${safeFav}" />`
-    );
+
+  const resolvedFavicon = resolveServerImageRef(settings.faviconUrl, requestOrigin);
+  const resolvedAppleTouch =
+    resolveServerImageRef(settings.appleTouchIconUrl, requestOrigin) || resolvedFavicon;
+  if (resolvedFavicon) {
+    injectLinkTag('icon', resolvedFavicon);
   }
+  if (resolvedAppleTouch) {
+    injectLinkTag('apple-touch-icon', resolvedAppleTouch);
+  }
+  injectLinkTag('manifest', '/manifest.webmanifest');
 
   const ldJson = JSON.stringify({
     '@context': 'https://schema.org',
@@ -1057,14 +1173,14 @@ function formatGeminiError(err: unknown): { status: number; message: string } {
     return {
       status: 503,
       message:
-        'Gemini AI is temporarily experiencing high demand (503). Please wait a few seconds and try again.',
+        'ZOTOMIC AI is temporarily experiencing high demand. Please wait a few seconds and try again.',
     };
   }
   if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('aborted')) {
     return {
       status: 504,
       message:
-        'Gemini AI took too long to respond while inspecting this video. Please try again in a few seconds.',
+        'ZOTOMIC AI took too long to respond while inspecting this item. Please try again in a few seconds.',
     };
   }
   if (rawMsg.includes('403') || rawMsg.includes('PERMISSION_DENIED')) {
@@ -1311,6 +1427,98 @@ export function createApiApp(): express.Express {
       geminiConfigured: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim()),
       model: GEMINI_MODEL,
     });
+  });
+
+  // Public admin-uploaded brand/homepage images stored as data URLs in Firestore.
+  app.get('/api/site-media/:id', async (req: Request, res: Response) => {
+    const id = String(req.params.id || '')
+      .replace(/[^a-zA-Z0-9_-]/g, '')
+      .slice(0, 128);
+    if (!id) {
+      res.status(404).end();
+      return;
+    }
+    const media = await readSiteMediaData(id);
+    if (!media) {
+      res.status(404).end();
+      return;
+    }
+    res.setHeader('Content-Type', media.mime);
+    res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.status(200).send(Buffer.from(media.base64, 'base64'));
+  });
+
+  // Dynamic web app manifest so admin-managed PWA icons and brand name apply.
+  app.get('/manifest.webmanifest', async (req: Request, res: Response) => {
+    const settings = await getPublicSiteSettings();
+    const fallbackOrigin = `${req.protocol}://${req.get('host') || 'localhost:3000'}`;
+    const origin = (settings.canonicalUrl || fallbackOrigin).replace(/\/+$/, '');
+    const favicon = resolveServerImageRef(settings.faviconUrl, origin);
+    const icon192 = resolveServerImageRef(settings.pwaIcon192Url, origin);
+    const icon512 = resolveServerImageRef(settings.pwaIcon512Url, origin);
+    const maskable = resolveServerImageRef(settings.pwaMaskableIconUrl, origin);
+
+    const icons: Array<{ src: string; sizes: string; type?: string; purpose: string }> = [];
+    const pushIcon = (src: string, sizes: string, purpose: string) => {
+      if (!src) return;
+      if (icons.some((icon) => icon.src === src && icon.sizes === sizes && icon.purpose === purpose)) {
+        return;
+      }
+      const ext = src.split('?')[0].toLowerCase();
+      const type = ext.endsWith('.svg')
+        ? 'image/svg+xml'
+        : ext.endsWith('.webp')
+          ? 'image/webp'
+          : ext.endsWith('.jpg') || ext.endsWith('.jpeg')
+            ? 'image/jpeg'
+            : ext.startsWith('http') && (ext.endsWith('.png') || ext.includes('/api/site-media/'))
+              ? undefined
+              : 'image/png';
+      icons.push({ src, sizes, purpose, ...(type ? { type } : {}) });
+    };
+
+    pushIcon(icon192, '192x192', 'any');
+    pushIcon(icon512, '512x512', 'any');
+    pushIcon(maskable, '512x512', 'maskable');
+    if (icons.length === 0 && favicon) {
+      pushIcon(favicon, '192x192', 'any');
+      pushIcon(favicon, '512x512', 'any');
+    }
+    if (icons.length === 0) {
+      pushIcon('/pwa-192x192.png', '192x192', 'any');
+      pushIcon('/pwa-512x512.png', '512x512', 'any');
+      pushIcon('/pwa-maskable-512x512.png', '512x512', 'maskable');
+    }
+
+    const siteName = settings.siteName || 'ClipIndex';
+    const manifest = {
+      id: '/',
+      name: `${siteName}${settings.metaTitle && !settings.metaTitle.startsWith(siteName) ? ` — ${settings.metaTitle}` : ''}`.slice(0, 120),
+      short_name: siteName.slice(0, 12),
+      description: settings.metaDescription,
+      theme_color: '#0F172A',
+      background_color: '#F8FAFC',
+      display: 'standalone',
+      start_url: '/',
+      scope: '/',
+      icons,
+      share_target: {
+        action: '/share-target',
+        method: 'POST',
+        enctype: 'multipart/form-data',
+        params: {
+          title: 'title',
+          text: 'text',
+          url: 'url',
+          files: [{ name: 'media', accept: ['image/*'] }],
+        },
+      },
+    };
+
+    res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.status(200).send(JSON.stringify(manifest));
   });
 
   app.get('/api/usage', async (req: Request, res: Response) => {
