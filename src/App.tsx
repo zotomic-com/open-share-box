@@ -96,6 +96,7 @@ import {
   subscribeSiteSettings,
   subscribeUserBadges,
 } from './lib/adminStore';
+import { readCachedSiteSettings, writeCachedSiteSettings } from './lib/siteBrandCache';
 import {
   markNotificationRead,
   subscribeAllInvoicesAdmin,
@@ -211,7 +212,13 @@ export default function App() {
   const [userNotifications, setUserNotifications] = useState<SiteNotification[]>([]);
   const [allAdminNotifications, setAllAdminNotifications] = useState<SiteNotification[]>([]);
   const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(() => new Set());
-  const [siteSettings, setSiteSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS);
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => {
+    const cached = readCachedSiteSettings();
+    return cached ? { ...DEFAULT_SITE_SETTINGS, ...cached } : DEFAULT_SITE_SETTINGS;
+  });
+  const [siteSettingsReady, setSiteSettingsReady] = useState<boolean>(
+    () => readCachedSiteSettings() !== null
+  );
   const [homepageContent, setHomepageContent] = useState<HomepageContent>(DEFAULT_HOMEPAGE_CONTENT);
   const [siteMediaUrls, setSiteMediaUrls] = useState<Record<string, string>>({});
   const [pendingHomeAnchor, setPendingHomeAnchor] = useState<string | null>(null);
@@ -339,6 +346,8 @@ export default function App() {
     const unsubSettings = subscribeSiteSettings((next) => {
       setLogoLoadError(false);
       setSiteSettings(next);
+      setSiteSettingsReady(true);
+      writeCachedSiteSettings(next);
     });
     const unsubPlans = subscribePricingPlans(setPricingPlans);
     const unsubBadges = subscribeUserBadges(setBadges);
@@ -2368,6 +2377,7 @@ export default function App() {
         <HomePage
           content={homepageContent}
           settings={siteSettings}
+          brandingReady={siteSettingsReady}
           isDark={isDark}
           isSignedIn={Boolean(user)}
           resolveImage={resolveMediaSrc}
@@ -2418,16 +2428,25 @@ export default function App() {
             }}
             className="inline-flex items-center gap-2.5 text-base font-bold tracking-tight text-slate-900 dark:text-slate-100 whitespace-nowrap shrink-0"
           >
-            {headerLogoUrl && !logoLoadError ? (
-              <img
-                src={headerLogoUrl}
-                alt={siteSettings.siteName}
-                referrerPolicy="no-referrer"
-                onError={() => setLogoLoadError(true)}
-                className="h-7 max-w-[140px] object-contain"
+            {siteSettingsReady ? (
+              <>
+                {headerLogoUrl && !logoLoadError ? (
+                  <img
+                    src={headerLogoUrl}
+                    alt={siteSettings.siteName}
+                    referrerPolicy="no-referrer"
+                    onError={() => setLogoLoadError(true)}
+                    className="h-7 max-w-[140px] object-contain"
+                  />
+                ) : null}
+                <span>{siteSettings.siteName}</span>
+              </>
+            ) : (
+              <span
+                className="h-4 w-24 animate-pulse rounded bg-slate-200 dark:bg-slate-700"
+                aria-hidden="true"
               />
-            ) : null}
-            <span>{siteSettings.siteName}</span>
+            )}
           </button>
         </div>
 
@@ -2604,15 +2623,24 @@ export default function App() {
             >
               <div className="flex items-center justify-between px-4 h-14 border-b border-slate-200 dark:border-slate-800">
                 <span className="inline-flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-100 truncate">
-                  {headerLogoUrl && !logoLoadError ? (
-                    <img
-                      src={headerLogoUrl}
-                      alt={siteSettings.siteName}
-                      referrerPolicy="no-referrer"
-                      className="h-6 max-w-[110px] object-contain shrink-0"
+                  {siteSettingsReady ? (
+                    <>
+                      {headerLogoUrl && !logoLoadError ? (
+                        <img
+                          src={headerLogoUrl}
+                          alt={siteSettings.siteName}
+                          referrerPolicy="no-referrer"
+                          className="h-6 max-w-[110px] object-contain shrink-0"
+                        />
+                      ) : null}
+                      <span className="truncate">{siteSettings.siteName}</span>
+                    </>
+                  ) : (
+                    <span
+                      className="h-3.5 w-20 animate-pulse rounded bg-slate-200 dark:bg-slate-700"
+                      aria-hidden="true"
                     />
-                  ) : null}
-                  <span className="truncate">{siteSettings.siteName}</span>
+                  )}
                 </span>
                 <div className="flex items-center gap-1">
                   <button

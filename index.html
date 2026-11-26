@@ -4,6 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ClipIndex — Video Timestamps, Summaries & Searchable Library</title>
+    <script>
+      // Apply the last known admin branding before the app boots so a refresh
+      // never briefly shows the built-in default brand.
+      (function () {
+        try {
+          var raw = localStorage.getItem('zotomic_site_settings_v1');
+          if (!raw) return;
+          var s = JSON.parse(raw);
+          if (!s || typeof s.siteName !== 'string' || !s.siteName) return;
+          var title = s.metaTitle || s.siteName + (s.tagline ? ' — ' + s.tagline : '');
+          if (title) document.title = title;
+          var appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+          if (appleTitle) appleTitle.setAttribute('content', s.siteName);
+        } catch (e) {}
+      })();
+    </script>
     <meta
       name="description"
       content="Extract timestamped segments, AI summaries, transcripts, links, and searchable tags from shared YouTube, TikTok, Instagram, Facebook videos, screenshots, and web links."

@@ -40,10 +40,12 @@ import type {
   SiteSettings,
 } from '../types/video';
 import { HOMEPAGE_SECTION_ANCHORS } from '../lib/homepageDefaults';
+import { PWAInstallBar } from './PWAControls';
 
 interface HomePageProps {
   content: HomepageContent;
   settings: SiteSettings;
+  brandingReady: boolean;
   isDark: boolean;
   isSignedIn: boolean;
   resolveImage: (src: string) => string;
@@ -1159,6 +1161,7 @@ function CtaSection({
 export function HomePage({
   content,
   settings,
+  brandingReady,
   isDark,
   isSignedIn,
   resolveImage,
@@ -1312,21 +1315,30 @@ export function HomePage({
             }}
             className="flex min-w-0 items-center gap-2.5"
           >
-            {logoUrl ? (
-              <img
-                src={logoUrl}
-                alt={brandName}
-                referrerPolicy="no-referrer"
-                className="h-8 max-w-[150px] object-contain"
-              />
+            {brandingReady ? (
+              <>
+                {logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    alt={brandName}
+                    referrerPolicy="no-referrer"
+                    className="h-8 max-w-[150px] object-contain"
+                  />
+                ) : (
+                  <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[var(--hp-accent)] text-sm font-extrabold text-white shadow-lg shadow-blue-600/20">
+                    {brandName.slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+                <span className="truncate text-lg font-bold tracking-[-0.02em] text-[var(--hp-text)]">
+                  {brandName}
+                </span>
+              </>
             ) : (
-              <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-[var(--hp-accent)] text-sm font-extrabold text-white shadow-lg shadow-blue-600/20">
-                {brandName.slice(0, 1).toUpperCase()}
+              <span className="flex items-center gap-2.5" aria-hidden="true">
+                <span className="h-8 w-8 animate-pulse rounded-[10px] bg-[var(--hp-panel-alt)]" />
+                <span className="h-4 w-24 animate-pulse rounded bg-[var(--hp-panel-alt)]" />
               </span>
             )}
-            <span className="truncate text-lg font-bold tracking-[-0.02em] text-[var(--hp-text)]">
-              {brandName}
-            </span>
           </button>
 
           <nav className="hidden items-center gap-7 md:flex" aria-label="Main navigation">
@@ -1455,6 +1467,8 @@ export function HomePage({
         ) : null}
       </header>
 
+      <PWAInstallBar siteName={brandingReady ? brandName : ''} />
+
       <main>{sections.map(renderSection)}</main>
 
       {/* Footer */}
@@ -1469,19 +1483,25 @@ export function HomePage({
               }}
               className="flex items-center gap-2.5"
             >
-              {logoUrl ? (
-                <img
-                  src={logoUrl}
-                  alt={brandName}
-                  referrerPolicy="no-referrer"
-                  className="h-7 max-w-[130px] object-contain"
-                />
+              {brandingReady ? (
+                <>
+                  {logoUrl ? (
+                    <img
+                      src={logoUrl}
+                      alt={brandName}
+                      referrerPolicy="no-referrer"
+                      className="h-7 max-w-[130px] object-contain"
+                    />
+                  ) : (
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--hp-accent)] text-xs font-extrabold text-white">
+                      {brandName.slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
+                  <span className="text-base font-bold text-[var(--hp-text)]">{brandName}</span>
+                </>
               ) : (
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--hp-accent)] text-xs font-extrabold text-white">
-                  {brandName.slice(0, 1).toUpperCase()}
-                </span>
+                <span className="h-7 w-28 animate-pulse rounded bg-[var(--hp-panel-alt)]" aria-hidden="true" />
               )}
-              <span className="text-base font-bold text-[var(--hp-text)]">{brandName}</span>
             </button>
             <p className="mt-2 text-xs text-[var(--hp-subtle)]">
               {settings.footerText?.trim() ||

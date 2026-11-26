@@ -153,11 +153,12 @@ export const AdminBrandingPanel: React.FC<AdminBrandingPanelProps> = ({
           />
           <div>
             <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-              Installed app (PWA) icons
+              Installed app, splash &amp; notification icons
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Controls the icon used when the site is installed on a phone or desktop. Leave a field
-              empty to fall back to the favicon or the bundled app icon.
+              Controls the icon used when the site is installed on a phone or desktop, the mobile
+              splash screen, and the icon shown for its notifications. Upload, replace, or use
+              Remove to reset a field to its fallback.
             </p>
           </div>
         </div>
@@ -169,6 +170,7 @@ export const AdminBrandingPanel: React.FC<AdminBrandingPanelProps> = ({
             value={form.pwaIcon192Url}
             onChange={(value) => setField('pwaIcon192Url', value)}
             preview="square"
+            hint="Home screen shortcut and Android install prompt."
             compress={{ maxWidth: 192, maxHeight: 192, quality: 0.92, maxBytes: 160_000 }}
           />
           <ImageAssetField
@@ -177,6 +179,7 @@ export const AdminBrandingPanel: React.FC<AdminBrandingPanelProps> = ({
             value={form.pwaIcon512Url}
             onChange={(value) => setField('pwaIcon512Url', value)}
             preview="square"
+            hint="Install dialog and desktop app launcher."
             compress={{ maxWidth: 512, maxHeight: 512, quality: 0.92, maxBytes: 500_000 }}
           />
           <ImageAssetField
@@ -185,7 +188,7 @@ export const AdminBrandingPanel: React.FC<AdminBrandingPanelProps> = ({
             value={form.pwaMaskableIconUrl}
             onChange={(value) => setField('pwaMaskableIconUrl', value)}
             preview="square"
-            hint="Keep the important artwork inside the middle 80% safe zone."
+            hint="Android adaptive icon, mobile splash screen, and notifications. Keep the artwork inside the middle 80% safe zone."
             compress={{ maxWidth: 512, maxHeight: 512, quality: 0.92, maxBytes: 500_000 }}
           />
         </div>

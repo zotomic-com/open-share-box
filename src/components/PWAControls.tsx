@@ -7,7 +7,8 @@ interface PWAInstallBarProps {
   siteName?: string;
 }
 
-export const PWAInstallBar: React.FC<PWAInstallBarProps> = ({ siteName = 'ClipIndex' }) => {
+export const PWAInstallBar: React.FC<PWAInstallBarProps> = ({ siteName = '' }) => {
+  const displayName = siteName.trim() || 'the app';
   const { isInstallable, isInstalled, isIOS, install, markInstalled } = usePWAInstall();
   const [showGuideModal, setShowGuideModal] = useState(false);
   const [dismissedForSession, setDismissedForSession] = useState(false);
@@ -40,7 +41,7 @@ export const PWAInstallBar: React.FC<PWAInstallBarProps> = ({ siteName = 'ClipIn
             />
             <p className="text-xs text-slate-700 dark:text-slate-200 truncate">
               <span className="font-semibold text-slate-900 dark:text-slate-100">
-                Install {siteName}
+                Install {displayName}
               </span>{' '}
               for quick Share Sheet capture, offline library access, and one-tap screenshot saving.
             </p>
@@ -80,7 +81,7 @@ export const PWAInstallBar: React.FC<PWAInstallBarProps> = ({ siteName = 'ClipIn
                 id="pwa-install-title"
                 className="text-base font-semibold text-slate-900 dark:text-slate-100"
               >
-                Install {siteName} on this device
+                Install {displayName} on this device
               </h3>
               <button
                 type="button"
@@ -96,12 +97,12 @@ export const PWAInstallBar: React.FC<PWAInstallBarProps> = ({ siteName = 'ClipIn
               <ol className="text-sm text-slate-700 dark:text-slate-300 space-y-2 list-decimal list-inside">
                 <li>Tap the Share button in Safari&apos;s toolbar.</li>
                 <li>Scroll down and tap Add to Home Screen.</li>
-                <li>Launch {siteName} from your home screen for Share Sheet &amp; full-screen access.</li>
+                <li>Launch {displayName} from your home screen for Share Sheet &amp; full-screen access.</li>
               </ol>
             ) : (
               <ol className="text-sm text-slate-700 dark:text-slate-300 space-y-2 list-decimal list-inside">
                 <li>Open your browser menu (or look for the install icon in the address bar).</li>
-                <li>Select &ldquo;Install {siteName}&rdquo; or &ldquo;Add to Home Screen&rdquo;.</li>
+                <li>Select &ldquo;Install {displayName}&rdquo; or &ldquo;Add to Home Screen&rdquo;.</li>
                 <li>Once installed, open it directly as a standalone app.</li>
               </ol>
             )}
@@ -144,7 +145,7 @@ export const OfflineIndicator: React.FC = () => {
       className="fixed bottom-4 left-4 z-50 flex items-center gap-2 rounded-lg bg-amber-600 px-3 py-2 text-xs font-medium text-white shadow-lg"
     >
       <WifiOff className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-      <span>Offline Mode — Viewing cached library</span>
+      <span>Offline Mode â€” Viewing cached library</span>
     </div>
   );
 };
