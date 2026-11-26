@@ -485,6 +485,11 @@ export default function App() {
         el.setAttribute('rel', relVal);
         document.head.appendChild(el);
       }
+      // Drop any stale type hint from the static HTML so the browser
+      // re-detects the (admin-managed) image instead of rejecting it.
+      if (relVal === 'icon' || relVal === 'apple-touch-icon') {
+        el.removeAttribute('type');
+      }
       el.setAttribute('href', href);
     };
 

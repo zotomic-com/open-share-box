@@ -701,7 +701,11 @@ interface FetchedMetadata {
   metadataSource: string;
 }
 
-async function fetchWithTimeout(url: string, timeoutMs = 5000): Promise<globalThis.Response> {
+async function fetchWithTimeout(
+  url: string,
+  timeoutMs = 5000,
+  accept = 'text/html,application/json,application/xhtml+xml'
+): Promise<globalThis.Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -710,7 +714,7 @@ async function fetchWithTimeout(url: string, timeoutMs = 5000): Promise<globalTh
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-        Accept: 'text/html,application/json,application/xhtml+xml',
+        Accept: accept,
       },
       redirect: 'follow',
     });
@@ -1449,6 +1453,106 @@ export function createApiApp(): express.Express {
     res.status(200).send(Buffer.from(media.base64, 'base64'));
   });
 
+  // Dynamic browser/app icons so admin-managed branding applies even when the
+  // static Vite HTML is served directly (for example on Vercel).
+  type BrandIconSlot = 'favicon' | 'apple' | 'icon192' | 'icon512' | 'maskable';
+
+  const resolveBrandIcon = async (req: Request, slot: BrandIconSlot) => {
+    const settings = await getPublicSiteSettings();
+    const fallbackOrigin = `${req.protocol}://${req.get('host') || 'localhost:3000'}`;
+    const origin = (settings.canonicalUrl || fallbackOrigin).replace(/\/+$/, '');
+    const favicon = resolveServerImageRef(settings.faviconUrl, origin);
+    const appleTouch = resolveServerImageRef(settings.appleTouchIconUrl, origin);
+    const icon192 = resolveServerImageRef(settings.pwaIcon192Url, origin);
+    const icon512 = resolveServerImageRef(settings.pwaIcon512Url, origin);
+    const maskable = resolveServerImageRef(settings.pwaMaskableIconUrl, origin);
+    switch (slot) {
+      case 'apple':
+        return appleTouch || favicon || '/apple-touch-icon.png';
+      case 'icon192':
+        return icon192 || favicon || '/pwa-192x192.png';
+      case 'icon512':
+        return icon512 || favicon || '/pwa-512x512.png';
+      case 'maskable':
+        return maskable || icon512 || favicon || '/pwa-maskable-512x512.png';
+      default:
+        return favicon || '/icon.svg';
+    }
+  };
+
+  // Reads the icon bytes so the response is same-origin. That keeps installed
+  // app icons working even if the remote (for example Cloudinary) URL blocks
+  // cross-origin fetches or the referenced media is stored in Firestore.
+  const loadBrandIconBytes = async (
+    src: string
+  ): Promise<{ buffer: Buffer; mime: string } | null> => {
+    if (!src) return null;
+    const mediaMatch = /\/api\/site-media\/([A-Za-z0-9_-]+)/.exec(src);
+    if (mediaMatch) {
+      const media = await readSiteMediaData(mediaMatch[1]);
+      if (!media) return null;
+      return {
+        buffer: Buffer.from(media.base64, 'base64'),
+        mime: media.mime,
+      };
+    }
+    if (!/^https?:/i.test(src)) return null;
+    try {
+      const upstream = await fetchWithTimeout(
+        src,
+        6000,
+        'image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5'
+      );
+      if (!upstream.ok) return null;
+      const mime = (upstream.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+      if (!mime.startsWith('image/')) return null;
+      const buffer = Buffer.from(await upstream.arrayBuffer());
+      if (buffer.length === 0 || buffer.length > 3 * 1024 * 1024) return null;
+      return { buffer, mime };
+    } catch {
+      return null;
+    }
+  };
+
+  const sendBrandIcon = async (req: Request, res: Response, slot: BrandIconSlot) => {
+    const target = await resolveBrandIcon(req, slot);
+    const bytes = await loadBrandIconBytes(target);
+    if (bytes) {
+      res.setHeader('Content-Type', bytes.mime);
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.status(200).send(bytes.buffer);
+      return;
+    }
+    res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    res.redirect(302, target);
+  };
+
+  app.get('/api/brand/favicon', async (req: Request, res: Response) => {
+    await sendBrandIcon(req, res, 'favicon');
+  });
+
+  app.get('/api/brand/apple-touch-icon', async (req: Request, res: Response) => {
+    await sendBrandIcon(req, res, 'apple');
+  });
+
+  app.get('/api/brand/icon-192', async (req: Request, res: Response) => {
+    await sendBrandIcon(req, res, 'icon192');
+  });
+
+  app.get('/api/brand/icon-512', async (req: Request, res: Response) => {
+    await sendBrandIcon(req, res, 'icon512');
+  });
+
+  app.get('/api/brand/icon-maskable', async (req: Request, res: Response) => {
+    await sendBrandIcon(req, res, 'maskable');
+  });
+
+  // Fallback path some browsers request directly even when a <link> is present.
+  app.get('/favicon.ico', async (req: Request, res: Response) => {
+    await sendBrandIcon(req, res, 'favicon');
+  });
+
   // Dynamic web app manifest so admin-managed PWA icons and brand name apply.
   app.get('/manifest.webmanifest', async (req: Request, res: Response) => {
     const settings = await getPublicSiteSettings();
@@ -1460,36 +1564,43 @@ export function createApiApp(): express.Express {
     const maskable = resolveServerImageRef(settings.pwaMaskableIconUrl, origin);
 
     const icons: Array<{ src: string; sizes: string; type?: string; purpose: string }> = [];
-    const pushIcon = (src: string, sizes: string, purpose: string) => {
+    const iconType = (src: string): string | undefined => {
+      if (!src) return undefined;
+      const clean = src.split('?')[0].toLowerCase();
+      if (clean.includes('/api/site-media/')) return undefined;
+      if (clean.endsWith('.svg')) return 'image/svg+xml';
+      if (clean.endsWith('.webp')) return 'image/webp';
+      if (clean.endsWith('.jpg') || clean.endsWith('.jpeg')) return 'image/jpeg';
+      if (clean.endsWith('.gif')) return 'image/gif';
+      if (clean.endsWith('.avif')) return 'image/avif';
+      if (clean.endsWith('.ico')) return 'image/x-icon';
+      return 'image/png';
+    };
+    const pushIcon = (
+      src: string,
+      sizes: string,
+      purpose: string,
+      typeSource: string = src
+    ) => {
       if (!src) return;
       if (icons.some((icon) => icon.src === src && icon.sizes === sizes && icon.purpose === purpose)) {
         return;
       }
-      const ext = src.split('?')[0].toLowerCase();
-      const type = ext.endsWith('.svg')
-        ? 'image/svg+xml'
-        : ext.endsWith('.webp')
-          ? 'image/webp'
-          : ext.endsWith('.jpg') || ext.endsWith('.jpeg')
-            ? 'image/jpeg'
-            : ext.startsWith('http') && (ext.endsWith('.png') || ext.includes('/api/site-media/'))
-              ? undefined
-              : 'image/png';
+      const type = iconType(typeSource);
       icons.push({ src, sizes, purpose, ...(type ? { type } : {}) });
     };
 
-    pushIcon(icon192, '192x192', 'any');
-    pushIcon(icon512, '512x512', 'any');
-    pushIcon(maskable, '512x512', 'maskable');
-    if (icons.length === 0 && favicon) {
-      pushIcon(favicon, '192x192', 'any');
-      pushIcon(favicon, '512x512', 'any');
-    }
-    if (icons.length === 0) {
-      pushIcon('/pwa-192x192.png', '192x192', 'any');
-      pushIcon('/pwa-512x512.png', '512x512', 'any');
-      pushIcon('/pwa-maskable-512x512.png', '512x512', 'maskable');
-    }
+    // Same-origin endpoints that stream the admin-managed icon bytes. Browser
+    // icon discovery, install prompts, splash screens and notification icons
+    // all read these instead of build-time files.
+    pushIcon('/api/brand/icon-192', '192x192', 'any', icon192 || favicon || '/pwa-192x192.png');
+    pushIcon('/api/brand/icon-512', '512x512', 'any', icon512 || icon192 || favicon || '/pwa-512x512.png');
+    pushIcon(
+      '/api/brand/icon-maskable',
+      '512x512',
+      'maskable',
+      maskable || icon512 || icon192 || favicon || '/pwa-maskable-512x512.png'
+    );
 
     const siteName = settings.siteName || 'ClipIndex';
     const manifest = {
@@ -1517,7 +1628,7 @@ export function createApiApp(): express.Express {
     };
 
     res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
     res.status(200).send(JSON.stringify(manifest));
   });
 
